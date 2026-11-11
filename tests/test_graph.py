@@ -49,6 +49,11 @@ def test_routes_to_no_context_below_the_threshold(docs_dir: Path, tmp_path: Path
         ("See [2][3] and [1, 3].", {1, 2, 3}),
         ("Out of range [0] [4] [12].", set()),
         ("No citations at all.", set()),
+        ("Range [1-3] and en dash [1–2].", {1, 2, 3}),
+        ("Semicolon [1; 3].", {1, 3}),
+        ("Labelled [Excerpt 2] and [excerpts 1, 3].", {1, 2, 3}),
+        ("Not a citation: [EUR 45], [see policy].", set()),
+        ("Range past the end [2-99].", {2, 3}),
     ],
 )
 def test_cited_numbers(answer: str, expected: set[int]) -> None:
@@ -70,7 +75,7 @@ def test_model_slots_fail_fast_when_all_busy() -> None:
             with pytest.raises(Overloaded) as caught:
                 async with slots.slot():
                     pass
-        assert caught.value.retry_after == 1
+        assert caught.value.retry_after == 10
         async with slots.slot():  # released again after use
             pass
 

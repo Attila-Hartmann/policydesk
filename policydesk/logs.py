@@ -29,7 +29,8 @@ def setup_logging(level: str) -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     logging.basicConfig(level=level.upper(), handlers=[handler], force=True)
-    for noisy in ("httpx", "httpx2", "httpcore", "openai"):  # they would log full request URLs at INFO/DEBUG
+    # These log every request URL at INFO. The openai logger stays at INFO: its "Retrying request" lines show retries.
+    for noisy in ("httpx", "httpx2", "httpcore"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

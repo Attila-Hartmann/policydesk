@@ -6,11 +6,11 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# Test stage, for running the fast test suite without uv on the host: docker build --target test .
+# Test stage, for running the checks without uv on the host: docker build --target test -t policydesk-test .
 FROM build AS test
 RUN uv sync --frozen
 COPY . .
-RUN uv run --frozen pytest --cov
+RUN uv run --frozen ruff check . && uv run --frozen ruff format --check . && uv run --frozen mypy && uv run --frozen pytest --cov
 
 # Runtime: no uv, no dev dependencies, non-root user.
 FROM python:3.12-slim
@@ -20,6 +20,7 @@ WORKDIR /app
 COPY --from=build --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app policydesk/ policydesk/
 COPY --chown=app:app data/ data/
+COPY --chown=app:app scripts/ scripts/
 # The index is written here at startup, by the non-root user.
 RUN mkdir var && chown app:app var
 USER app

@@ -1,30 +1,32 @@
 """Application logic: run the question flow under one deadline and shape the result."""
 
 import asyncio
-from typing import Any
+from typing import cast
+
+from langgraph.graph.state import CompiledStateGraph
 
 from policydesk.errors import ModelTimeout
 from policydesk.graph import RagState
-from policydesk.logs import request_id_var
-from policydesk.schemas import AskResponse, Source
+from policydesk.schemas import Answer, Source
 
 
 class AskService:
-    def __init__(self, graph: Any, request_timeout_seconds: float) -> None:
+    def __init__(
+        self, graph: CompiledStateGraph[RagState, None, RagState, RagState], request_timeout_seconds: float
+    ) -> None:
         self._graph = graph
         self._timeout = request_timeout_seconds
 
-    async def ask(self, question: str) -> AskResponse:
+    async def ask(self, question: str) -> Answer:
         try:
             async with asyncio.timeout(self._timeout):
-                state: RagState = await self._graph.ainvoke({"question": question})
+                state = cast(RagState, await self._graph.ainvoke({"question": question}))
         except TimeoutError:
             raise ModelTimeout(f"No answer within the {self._timeout:g} s request deadline.") from None
 
         hits = state.get("hits", [])
         cited = state.get("cited", set())
-        return AskResponse(
-            request_id=request_id_var.get(),
+        return Answer(
             outcome=state["outcome"],
             answer=state["answer"],
             sources=[

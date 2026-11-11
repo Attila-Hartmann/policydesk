@@ -44,7 +44,7 @@ def test_make_client_takes_everything_from_settings() -> None:
 
     assert str(client.base_url) == "http://x:1/v1/"
     assert client.api_key == "unused"
-    assert (client.timeout, client.max_retries) == (7, 2)
+    assert (client.timeout, client.max_retries) == (7 / 3, 2)  # each of the 3 attempts gets a third of the deadline
 
 
 @pytest.mark.parametrize(("effort", "expected"), [(None, None), ("none", "none")])
@@ -96,6 +96,12 @@ def raises(exc: Exception) -> Handler:
         (raises(httpx.ConnectError("refused")), ModelError, True, None),
         (fails_with(429, {"retry-after": "3"}), ModelRateLimited, True, 3),
         (fails_with(429), ModelRateLimited, True, 10),
+        (
+            lambda request: httpx.Response(429, json={"error": {"message": "quota", "code": "insufficient_quota"}}),
+            ModelError,
+            False,
+            None,
+        ),
         (fails_with(500), ModelError, True, None),
         (fails_with(503), ModelError, True, None),
         (fails_with(401), ModelError, False, None),
@@ -103,7 +109,7 @@ def raises(exc: Exception) -> Handler:
         (fails_with(400), ModelError, False, None),
         (lambda request: httpx.Response(200, content=b"<html>not an API</html>"), ModelError, False, None),
     ],
-    ids=["timeout", "connect", "429_header", "429_default", "500", "503", "401", "404", "400", "garbage"],
+    ids=["timeout", "connect", "429_header", "429_default", "429_quota", "500", "503", "401", "404", "400", "garbage"],
 )
 def test_sdk_errors_become_domain_errors(
     handler: Handler, error_type: type[PolicydeskError], retryable: bool, retry_after: int | None
@@ -116,11 +122,12 @@ def test_sdk_errors_become_domain_errors(
     assert caught.value.retry_after == retry_after
 
 
-def test_empty_answer_is_a_retryable_model_error() -> None:
+def test_empty_answer_is_a_non_retryable_model_error() -> None:
     handler: Handler = lambda request: httpx.Response(200, json=chat_reply(None))  # noqa: E731
 
-    with pytest.raises(ModelError, match="empty answer"):
+    with pytest.raises(ModelError, match="empty answer") as caught:
         asyncio.run(OpenAICompatibleChat(client_with(handler), "m").complete("s", "u"))
+    assert caught.value.retryable is False
 
 
 def test_embedding_errors_are_translated_too() -> None:

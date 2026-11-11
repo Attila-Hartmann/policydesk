@@ -19,12 +19,13 @@ _NOT_OPENAI_COMPATIBLE = "Unexpected response from the {what}: is BASE_URL an Op
 
 
 def make_client(settings: Settings) -> openai.AsyncOpenAI:
-    """Per-attempt timeout = the request deadline; the deadline in AskService bounds retries too.
-    The SDK retries connection errors, 408, 409, 429 and 5xx with exponential backoff and jitter."""
+    """The SDK retries connection errors, timeouts, 408, 409, 429 and 5xx with exponential backoff and jitter.
+    Each attempt gets an equal share of the request deadline, so a hung attempt is retried instead of eating the
+    whole budget; the deadline in AskService still cancels whatever is in flight when it expires."""
     return openai.AsyncOpenAI(
         base_url=settings.base_url,
         api_key=settings.api_key.get_secret_value() or "unused",  # Ollama ignores the key; the SDK requires one
-        timeout=settings.request_timeout_seconds,
+        timeout=settings.request_timeout_seconds / (settings.llm_max_retries + 1),
         max_retries=settings.llm_max_retries,
     )
 
@@ -37,14 +38,16 @@ def _translate_errors(what: str) -> Iterator[None]:
     except openai.APITimeoutError as e:
         raise ModelTimeout(f"The {what} did not answer in time.") from e
     except openai.RateLimitError as e:
+        if e.code == "insufficient_quota":  # billing, not load: retrying does not help
+            raise ModelError(f"The {what} account has no quota left.", retryable=False) from e
         raise ModelRateLimited(f"The {what} is rate-limiting requests.", retry_after=_retry_after(e)) from e
     except openai.APIConnectionError as e:
         raise ModelError(f"Could not reach the {what}.", retryable=True) from e
     except openai.APIStatusError as e:
         transient = e.status_code >= 500 or e.status_code in (408, 409)
         raise ModelError(f"The {what} returned HTTP {e.status_code}.", retryable=transient) from e
-    except openai.OpenAIError as e:  # e.g. a response the SDK could not parse
-        raise ModelError(f"Unexpected response from the {what}.", retryable=True) from e
+    except openai.OpenAIError as e:  # e.g. a response the SDK could not validate: deterministic, not transient
+        raise ModelError(f"Unexpected response from the {what}.", retryable=False) from e
 
 
 def _retry_after(e: openai.APIStatusError) -> int:
@@ -70,7 +73,7 @@ class OpenAICompatibleChat:
             raise ModelError(_NOT_OPENAI_COMPATIBLE.format(what="language model"), retryable=False)
         text = (response.choices[0].message.content or "").strip()
         if not text:
-            raise ModelError("The language model returned an empty answer.", retryable=True)
+            raise ModelError("The language model returned an empty answer.", retryable=False)
         usage = response.usage
         return Completion(text, usage.prompt_tokens if usage else None, usage.completion_tokens if usage else None)
 

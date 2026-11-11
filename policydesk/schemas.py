@@ -30,14 +30,17 @@ class Source(BaseModel):
     cited: bool = Field(description="True if the answer cites this excerpt as [n].")
 
 
-class AskResponse(BaseModel):
-    request_id: str
+class Answer(BaseModel):
     outcome: Literal["answered", "no_relevant_context"] = Field(
         description="`no_relevant_context`: no excerpt passed the relevance threshold, the model was not called."
     )
     answer: str
     sources: list[Source] = Field(description="Excerpts given to the model, best match first.")
     model: str | None = Field(description="Chat model that wrote the answer; null if no model was called.")
+
+
+class AskResponse(Answer):
+    request_id: str = Field(description="Same as the X-Request-ID response header; quote it when reporting a problem.")
 
 
 class ErrorDetail(BaseModel):

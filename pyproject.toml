@@ -36,7 +36,7 @@ strict = true
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-m 'not integration' --strict-markers"
-markers = ["integration: needs a running Ollama and/or OPENAI_API_KEY (run with: uv run pytest -m integration)"]
+markers = ["integration: end-to-end against a running API at API_URL (start it with docker compose up; run with: uv run pytest -m integration)"]
 
 [tool.coverage.run]
 source = ["policydesk"]

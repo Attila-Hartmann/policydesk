@@ -17,23 +17,34 @@ logger = logging.getLogger(__name__)
 
 MAX_CHUNK_CHARS = 1200
 EMBED_BATCH = 16  # keeps each embedding call short on a CPU-only Ollama
-_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
+_HEADING = re.compile(r"^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$")
+_FENCE = re.compile(r"^\s*(```|~~~)")
 
 
 def chunk_markdown(filename: str, text: str, max_chars: int = MAX_CHUNK_CHARS) -> list[Chunk]:
-    """One chunk per section (any heading below the `#` title); long sections split at paragraph boundaries.
-    Text before the first section becomes an "Overview" chunk. IDs are `<file stem>:<NN>` in document order."""
+    """One chunk per section; a section is named by its heading path (`Parent › Child`). The first `#` heading is
+    the document title. Text before the first section becomes an "Overview" chunk. Headings inside fenced code
+    blocks are text. Section bodies longer than max_chars are split at paragraph boundaries.
+    IDs are `<file stem>:<NN>` in document order."""
     stem = Path(filename).stem
-    title = stem
+    title: str | None = None
+    open_headings: list[tuple[int, str]] = []
     sections: list[tuple[str, list[str]]] = [("Overview", [])]
+    in_fence = False
     for line in text.replace("\r\n", "\n").split("\n"):
-        m = _HEADING.match(line)
-        if m and len(m.group(1)) == 1:
-            title = m.group(2)
-        elif m:
-            sections.append((m.group(2), []))
-        else:
+        if _FENCE.match(line):
+            in_fence = not in_fence
+        m = None if in_fence else _HEADING.match(line)
+        if m is None:
             sections[-1][1].append(line)
+            continue
+        level, heading = len(m.group(1)), m.group(2)
+        if level == 1 and title is None:
+            title = heading
+            continue
+        open_headings = [(lvl, h) for lvl, h in open_headings if lvl < level] + [(level, heading)]
+        sections.append((" › ".join(h for _, h in open_headings), []))
+    title = title or stem
 
     chunks: list[Chunk] = []
     for section, lines in sections:
@@ -60,9 +71,10 @@ def _pack_paragraphs(body: str, max_chars: int) -> list[str]:
 
 def load_chunks(docs_dir: Path) -> list[Chunk]:
     files = sorted(docs_dir.glob("*.md"))
-    if not files:
-        raise StartupError(f"No Markdown documents found in {docs_dir}.")
-    return [c for f in files for c in chunk_markdown(f.name, f.read_text(encoding="utf-8"))]
+    chunks = [c for f in files for c in chunk_markdown(f.name, f.read_text(encoding="utf-8"))]
+    if not chunks:
+        raise StartupError(f"No Markdown documents with text found in {docs_dir}.")
+    return chunks
 
 
 def fingerprint(chunks: list[Chunk], embedding_model: str) -> str:
@@ -79,9 +91,12 @@ async def ingest(docs_dir: Path, index_path: Path, embedder: Embedder) -> tuple[
         log_event(logger, "index_up_to_date", chunks=len(chunks), path=str(index_path))
         return existing, False
 
+    batches = list(batched([c.text for c in chunks], EMBED_BATCH))
+    log_event(logger, "index_build_started", chunks=len(chunks), batches=len(batches), model=embedder.model)
     vectors: list[list[float]] = []
-    for batch in batched([c.text for c in chunks], EMBED_BATCH):
+    for n, batch in enumerate(batches, start=1):
         vectors += await embedder.embed(batch)
+        log_event(logger, "index_batch_embedded", batch=n, of=len(batches))
     meta = IndexMeta(
         embedding_model=embedder.model,
         dimensions=len(vectors[0]),

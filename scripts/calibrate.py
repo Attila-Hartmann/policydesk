@@ -2,16 +2,13 @@
 
 Embeds 12 in-domain English, 12 in-domain Hungarian and 12 off-domain questions with the configured embedding model,
 and prints each question's top-1 score and chunk plus the min/max per group. Pick MIN_RELEVANCE_SCORE between the
-lowest in-domain score and the highest off-domain score. Needs a built index (`python -m policydesk ingest`).
+lowest in-domain score and the highest off-domain score. Needs a built index and a reachable embedding model.
 
-    uv run python scripts/calibrate.py
+    uv run python -m scripts.calibrate                         # on the host (README 4.3)
+    docker compose exec api python -m scripts.calibrate        # inside the running container
 """
 
 import asyncio
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from policydesk.config import load_settings
 from policydesk.providers import OpenAICompatibleEmbedder, make_client

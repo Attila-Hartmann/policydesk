@@ -66,9 +66,48 @@ def test_sample_corpus_chunks_deterministically_with_unique_ids() -> None:
     assert max(len(c.text) for c in first) < 1500
 
 
-def test_empty_docs_dir_fails_clearly(tmp_path: Path) -> None:
-    with pytest.raises(StartupError, match="No Markdown documents"):
+@pytest.mark.parametrize("files", [{}, {"empty.md": ""}, {"only-title.md": "# Title\n"}])
+def test_docs_without_text_fail_clearly(tmp_path: Path, files: dict[str, str]) -> None:
+    for name, text in files.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+
+    with pytest.raises(StartupError, match="No Markdown documents with text"):
         load_chunks(tmp_path)
+
+
+def test_heading_edge_cases() -> None:
+    text = """## Before the title
+
+text a
+
+# Real Title
+
+## C#
+
+text b
+
+### Details
+
+text c
+
+```
+# not a heading
+```
+
+# Second H1 is a section
+
+text d
+"""
+    chunks = chunk_markdown("edge.md", text)
+
+    assert {c.title for c in chunks} == {"Real Title"}  # the first H1, even if it comes late
+    assert [c.section for c in chunks] == [
+        "Before the title",
+        "C#",
+        "C# › Details",
+        "Second H1 is a section",
+    ]
+    assert "# not a heading" in chunks[2].text
 
 
 def test_ingest_skips_when_fingerprint_unchanged_and_rebuilds_when_it_changes(docs_dir: Path, tmp_path: Path) -> None:

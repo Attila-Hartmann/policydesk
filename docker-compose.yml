@@ -18,7 +18,7 @@ services:
       timeout: 5s
       retries: 30
 
-  # One-shot: downloads the models on first start (~4 GB), and is a no-op after that, also offline.
+  # One-shot: downloads the models on first start (~3.7 GB), and is a no-op after that, also offline.
   ollama-pull:
     image: ollama/ollama:0.40.16
     profiles: [local]
@@ -40,6 +40,9 @@ services:
     env_file: .env
     ports:
       - "8000:8000"
+    volumes:
+      - ./data/policies:/app/data/policies:ro   # edit or add policies, then: docker compose restart api
+      - index:/app/var                          # the index survives re-creation; rebuilt only when its fingerprint changes
     extra_hosts:
       - "host.docker.internal:host-gateway"   # lets BASE_URL point at an Ollama running on the host, on Linux too
     depends_on:
@@ -49,3 +52,4 @@ services:
 
 volumes:
   ollama:
+  index:

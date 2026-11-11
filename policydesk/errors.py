@@ -1,4 +1,4 @@
-"""Domain errors. Integrations raise them, the API maps them to the error contract (ADR-005)."""
+"""Domain errors. Integrations raise them; the API layer maps their codes to HTTP statuses (ADR-005)."""
 
 
 class StartupError(Exception):
@@ -6,7 +6,6 @@ class StartupError(Exception):
 
 
 class PolicydeskError(Exception):
-    status: int = 500
     code: str = "internal_error"
     retryable: bool = False
 
@@ -19,18 +18,18 @@ class PolicydeskError(Exception):
 
 
 class ModelTimeout(PolicydeskError):
-    status, code, retryable = 504, "model_timeout", True
+    code, retryable = "model_timeout", True
 
 
 class ModelRateLimited(PolicydeskError):
-    status, code, retryable = 503, "model_rate_limited", True
+    code, retryable = "model_rate_limited", True
 
 
 class Overloaded(PolicydeskError):
-    status, code, retryable = 503, "overloaded", True
+    code, retryable = "overloaded", True
 
 
 class ModelError(PolicydeskError):
     """Provider unreachable or failing (retryable) or rejecting the call (not retryable: a config problem)."""
 
-    status, code = 502, "model_error"
+    code = "model_error"

@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
             # per-process model-call cap and the in-memory index.
             uvicorn.run(create_app(settings), host=settings.host, port=settings.port, log_config=None, access_log=False)
         return 0
-    except StartupError as e:
+    except (StartupError, OSError) as e:  # OSError: e.g. an unreadable docs folder or a read-only index path
         setup_logging("INFO")
         log_event(logger, "startup_failed", logging.ERROR, reason=str(e))
         return 1

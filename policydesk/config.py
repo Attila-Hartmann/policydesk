@@ -2,9 +2,9 @@
 mode means changing these values, never code."""
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Self
 
-from pydantic import Field, SecretStr, ValidationError, field_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from policydesk.errors import StartupError
@@ -35,12 +35,24 @@ class Settings(BaseSettings):
     index_path: Path = Path("var/index.json")
     host: str = "127.0.0.1"
     port: int = 8000
-    log_level: str = "INFO"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @field_validator("reasoning_effort", mode="before")
     @classmethod
     def _empty_is_unset(cls, value: Any) -> Any:
         return value or None
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _upper(cls, value: Any) -> Any:
+        return value.upper() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def _queue_wait_fits_the_deadline(self) -> Self:
+        # Otherwise an overload would surface as a 504 timeout instead of a fast 503.
+        if self.queue_timeout_seconds >= self.request_timeout_seconds:
+            raise ValueError("QUEUE_TIMEOUT_SECONDS must be smaller than REQUEST_TIMEOUT_SECONDS")
+        return self
 
 
 def load_settings(**overrides: Any) -> Settings:
@@ -48,5 +60,7 @@ def load_settings(**overrides: Any) -> Settings:
     try:
         return Settings(**overrides)
     except ValidationError as e:
-        problems = "; ".join(f"{'.'.join(map(str, err['loc'])).upper()}: {err['msg']}" for err in e.errors())
+        problems = "; ".join(
+            f"{'.'.join(map(str, err['loc'])).upper() or 'SETTINGS'}: {err['msg']}" for err in e.errors()
+        )
         raise StartupError(f"Invalid configuration: {problems}") from None

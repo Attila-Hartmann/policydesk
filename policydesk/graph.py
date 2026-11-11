@@ -9,9 +9,10 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, Literal, TypedDict
+from typing import Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from policydesk.errors import Overloaded
 from policydesk.logs import log_event
@@ -22,6 +23,7 @@ from policydesk.store import Hit, VectorIndex
 logger = logging.getLogger(__name__)
 
 Outcome = Literal["answered", "no_relevant_context"]
+OVERLOADED_RETRY_AFTER_SECONDS = 10
 
 
 class RagState(TypedDict, total=False):
@@ -48,7 +50,7 @@ class ModelSlots:
                 await self._semaphore.acquire()
         except TimeoutError:
             raise Overloaded(
-                "All model slots are busy. Please retry shortly.", retry_after=max(1, round(self._wait_seconds * 2))
+                "All model slots are busy. Please retry shortly.", retry_after=OVERLOADED_RETRY_AFTER_SECONDS
             ) from None
         try:
             yield
@@ -58,7 +60,7 @@ class ModelSlots:
 
 def build_graph(
     embedder: Embedder, chat: ChatModel, index: VectorIndex, slots: ModelSlots, *, top_k: int, min_score: float
-) -> Any:  # CompiledStateGraph's generic parameters add nothing here
+) -> CompiledStateGraph[RagState, None, RagState, RagState]:
     async def retrieve(state: RagState) -> RagState:
         start = time.perf_counter()
         [vector] = await embedder.embed([state["question"]])
@@ -78,6 +80,7 @@ def build_graph(
 
     async def generate(state: RagState) -> RagState:
         hits = state["hits"]
+        queued = time.perf_counter()
         async with slots.slot():
             start = time.perf_counter()
             completion = await chat.complete(SYSTEM_PROMPT, user_prompt(state["question"], hits))
@@ -86,6 +89,7 @@ def build_graph(
             logger,
             "generation",
             model=chat.model,
+            queue_ms=round((start - queued) * 1000),
             ms=_ms(start),
             prompt_tokens=completion.prompt_tokens,
             completion_tokens=completion.completion_tokens,

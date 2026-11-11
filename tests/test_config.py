@@ -55,3 +55,26 @@ def test_api_key_is_masked_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("API_KEY", "sk-very-secret")
 
     assert "sk-very-secret" not in repr(load_settings(_env_file=None))
+
+
+@pytest.mark.parametrize(
+    ("env", "expected"),
+    [
+        ({"LOG_LEVEL": "VERBOSE"}, "LOG_LEVEL"),
+        ({"QUEUE_TIMEOUT_SECONDS": "30", "REQUEST_TIMEOUT_SECONDS": "30"}, "QUEUE_TIMEOUT_SECONDS must be smaller"),
+    ],
+)
+def test_inconsistent_settings_fail_at_startup(
+    monkeypatch: pytest.MonkeyPatch, env: dict[str, str], expected: str
+) -> None:
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+
+    with pytest.raises(StartupError, match=expected):
+        load_settings(_env_file=None)
+
+
+def test_log_level_is_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOG_LEVEL", "debug")
+
+    assert load_settings(_env_file=None).log_level == "DEBUG"

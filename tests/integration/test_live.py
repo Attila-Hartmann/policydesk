@@ -24,7 +24,8 @@ def api() -> Iterator[httpx.Client]:
         try:
             client.get("/health").raise_for_status()
         except httpx.HTTPError:
-            pytest.skip(f"No healthy policydesk API at {API_URL}; start it with `docker compose up` first")
+            # Fail, not skip: running `-m integration` without a stack must not look like a pass.
+            pytest.fail(f"No healthy policydesk API at {API_URL}; start it with `docker compose up` first")
         yield client
 
 

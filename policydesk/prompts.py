@@ -20,7 +20,10 @@ NO_CONTEXT_ANSWER = (
     "/ Erről nem találtam információt a szabályzatokban, ezért nem tudok rá válaszolni."
 )
 
-_CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
+_BRACKETS = re.compile(r"\[([^\[\]]{1,40})\]")
+_REF = r"(?:excerpts?\s*)?\d+(?:\s*[-–]\s*\d+)?"
+_CITATION_GROUP = re.compile(rf"^\s*{_REF}(?:\s*[,;]\s*{_REF})*\s*$", re.IGNORECASE)
+_NUMBER_OR_RANGE = re.compile(r"(\d+)(?:\s*[-–]\s*(\d+))?")
 
 
 def user_prompt(question: str, hits: list[Hit]) -> str:
@@ -29,6 +32,11 @@ def user_prompt(question: str, hits: list[Hit]) -> str:
 
 
 def cited_numbers(answer: str, count: int) -> set[int]:
-    """Excerpt numbers (1-based) cited as [n] or [n, m] in the answer, ignoring numbers out of range."""
-    found = {int(n) for group in _CITATION.findall(answer) for n in group.split(",")}
+    """Excerpt numbers (1-based) cited in the answer. Accepts the forms small models produce: [1], [1, 2], [1; 2],
+    [1-3], [Excerpt 2]. Brackets with other content (e.g. [EUR 45]) and numbers out of range are ignored."""
+    found: set[int] = set()
+    for group in _BRACKETS.findall(answer):
+        if _CITATION_GROUP.match(group):
+            for first, last in _NUMBER_OR_RANGE.findall(group):
+                found.update(range(int(first), min(int(last or first), count) + 1))
     return {n for n in found if 1 <= n <= count}
