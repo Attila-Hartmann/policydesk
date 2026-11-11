@@ -25,7 +25,7 @@ def test_defaults_are_the_local_ollama_mode(monkeypatch: pytest.MonkeyPatch, tmp
     ("sample", "base_url", "chat_model", "embedding_model", "reasoning_effort"),
     [
         (".env.example", "http://ollama:11434/v1", "qwen3:4b-instruct", "bge-m3", None),
-        (".env.openai.example", "https://api.openai.com/v1", "gpt-6-luna", "text-embedding-3-small", "none"),
+        (".env.openai.example", "https://api.openai.com/v1", "gpt-6-luna", "text-embedding-3-large", "none"),
     ],
 )
 def test_env_samples_are_valid(

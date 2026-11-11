@@ -14,7 +14,18 @@ The app must handle "no relevant hits" sensibly. Cosine-similarity scores are no
 
 ## Measurements
 
-_Filled in from the calibration run during implementation._
+Top-1 cosine score per question; 12 questions per group, run on 2026-11-11 with [`scripts/calibrate.py`](../../scripts/calibrate.py) (same index and search code as the API; rerun it after changing the embedding model).
+
+| Embedding model | In-domain English | In-domain Hungarian | Off-domain (EN + HU) | Threshold |
+|---|---|---|---|---|
+| `bge-m3` (local) | 0.611 – 0.773 | 0.586 – 0.748 | 0.297 – 0.529 | **0.55** |
+| `text-embedding-3-large` (cloud) | 0.458 – 0.722 | 0.403 – 0.685 | 0.081 – 0.375 | **0.39** |
+| `text-embedding-3-small` (rejected) | 0.478 – 0.717 | 0.266 – 0.578 | 0.085 – 0.369 | none possible |
+
+- The hypothesis held: the two models' baselines differ (off-domain maxima 0.53 vs 0.38), and cross-lingual scores run lower than same-language ones.
+- `text-embedding-3-small` was the original cloud choice. Its Hungarian scores overlap the off-domain range, and for several Hungarian questions the top hit was the wrong section, so no threshold works; it was replaced by `text-embedding-3-large`.
+- With `bge-m3` every in-domain question, English and Hungarian, had the correct section as its top hit.
+- Both margins are thin (0.529 → 0.586 and 0.375 → 0.403). The highest off-domain scores came from questions that mention Budapest or Hungary, words that also occur in the policies.
 
 ## Alternatives
 
@@ -26,4 +37,5 @@ _Filled in from the calibration run during implementation._
 ## Consequences
 
 - Changing the embedding model means recalibrating; the README and `.env` samples say so next to the variable.
+- The calibration set is small (36 questions). A larger labelled set, run in CI, is the first next step if the threshold starts to matter more.
 - Borderline questions (a relevant word in an off-topic question) can pass the threshold. The prompt's refusal rule handles most of these.

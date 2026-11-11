@@ -11,7 +11,7 @@ Requirement IDs (R…) refer to [requirements.md](requirements.md). Section 10 r
 | Domain | Synthetic policy knowledge base: 9 short English Markdown documents (travel & expenses, remote work, leave, IT security, onboarding, code of conduct, learning, data protection, benefits) with deliberate limits, dates and exceptions (R4–R8) |
 | Target user | Employees of the firm who want a quick, sourced answer instead of searching the intranet or asking HR (R5) |
 | Languages | Documents, code, identifiers and commits: English (the firm's working language, which is common for international firms in Budapest). **README: Hungarian.** Questions in Hungarian or English: multilingual embeddings, and the model answers in the question's language |
-| Cloud mode | OpenAI API (`gpt-6-luna`, `text-embedding-3-small`), smoke-tested with a real key |
+| Cloud mode | OpenAI API (`gpt-6-luna`, `text-embedding-3-large`), smoke-tested with a real key. `text-embedding-3-small` was the first choice; calibration showed it can't separate Hungarian questions from off-topic ones (ADR-004) |
 | Local mode | Ollama in Docker Compose, CPU only: `qwen3:4b-instruct` + `bge-m3` |
 | Repo | `policydesk`, public on GitHub after approval |
 
@@ -152,7 +152,7 @@ flowchart LR
 
    | Mode | Chat | Embeddings | Why |
    |---|---|---|---|
-   | Cloud | `gpt-6-luna` with `reasoning_effort=none` | `text-embedding-3-small` | OpenAI's current efficient model ([model page](https://developers.openai.com/api/docs/models/gpt-6-luna), checked 2026-11-11): $0.10 / $0.50 per 1M input/output tokens. A typical question (~1.5k tokens in, ~150 out) costs about $0.0002. Its default reasoning effort is `medium`; `none` keeps latency low, and the task is reading given text, not reasoning. The model page lists EU data residency as available. The embedding model costs $0.02 per 1M tokens and handles Hungarian queries. The exact snapshot actually called goes in the README. |
+   | Cloud | `gpt-6-luna` with `reasoning_effort=none` | `text-embedding-3-large` | OpenAI's current efficient model ([model page](https://developers.openai.com/api/docs/models/gpt-6-luna), checked 2026-11-11): $0.10 / $0.50 per 1M input/output tokens. A typical question (~1.5k tokens in, ~150 out) costs about $0.0002. Its default reasoning effort is `medium`; `none` keeps latency low, and the task is reading given text, not reasoning. The model page lists EU data residency as available. The embedding model costs $0.13 per 1M tokens; the cheaper `text-embedding-3-small` failed the Hungarian calibration (ADR-004). Indexing the corpus is ~4k tokens, so the difference is negligible. The exact snapshot actually called goes in the README. |
    | Local | `qwen3:4b-instruct` (Qwen3-4B-Instruct-2507, Q4_K_M, ~2.5 GB) | `bge-m3` (567M, ~1.2 GB) | A non-thinking 4B instruct model: hybrid thinking models spend most of their CPU time on hidden reasoning. Strong multilingual quality for its size. `bge-m3` is multilingual (Hungarian questions → English documents) and needs no query/document prefixes. Measured RAM, disk and latency go in the README. |
 
    Rejected: `nomic-embed-text` v1.5 (English only, needs task prefixes), `llama3.2:3b` (weaker multilingual), anything larger locally (CPU latency).
@@ -280,7 +280,7 @@ Rationale in [ADR-005](adr/005-failure-policy.md). Every non-2xx response has th
 | `BASE_URL` | `http://ollama:11434/v1` (host runs: `http://localhost:11434/v1`) | `https://api.openai.com/v1` |
 | `API_KEY` | (empty; Ollama ignores it) | `sk-…` (you add it) |
 | `CHAT_MODEL` | `qwen3:4b-instruct` | `gpt-6-luna` |
-| `EMBEDDING_MODEL` | `bge-m3` | `text-embedding-3-small` |
+| `EMBEDDING_MODEL` | `bge-m3` | `text-embedding-3-large` |
 | `REASONING_EFFORT` | (unset: not sent) | `none` |
 | `MIN_RELEVANCE_SCORE` | calibrated (ADR-004) | calibrated |
 | `TOP_K` | 4 | 4 |
