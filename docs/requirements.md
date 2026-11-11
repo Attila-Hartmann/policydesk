@@ -1,6 +1,6 @@
 # Követelmények nyomon követése
 
-A feladatkiírás minden követelménye számozva (R1–R61), rövid idézettel, és azzal, hogy hol és mivel teljesül. A § jelek a kiírás fejezeteit jelölik. Állapot: ✅ teljesítve, bizonyítékkal · ⏳ a beadásig teljesül (nyilvános repó, CI).
+A feladatkiírás minden követelménye számozva (R1–R61), rövid idézettel, és azzal, hogy hol és mivel teljesül. A § jelek a kiírás fejezeteit jelölik. Állapot: ✅ teljesítve, bizonyítékkal.
 
 A hivatkozott tesztek a [`tests/`](../tests/) mappában vannak; a „README” hivatkozások a [README.md](../README.md) fejezeteire mutatnak.
 
@@ -95,7 +95,7 @@ A hivatkozott tesztek a [`tests/`](../tests/) mappában vannak; a „README” h
 
 | ID | Kiírás (idézet) | Hol teljesül, mi bizonyítja | Állapot |
 |---|---|---|---|
-| R53 | „teljes projekt forráskódja egy nyilvános Git repoban, a tesztekkel és … konfigurációs mintákkal” | Nyilvános GitHub-repó, zöld CI | ⏳ |
+| R53 | „teljes projekt forráskódja egy nyilvános Git repoban, a tesztekkel és … konfigurációs mintákkal” | [github.com/Attila-Hartmann/policydesk](https://github.com/Attila-Hartmann/policydesk), zöld CI (GitHub Actions) | ✅ |
 | R54 | „Dockerfile, és szükség esetén docker-compose.yml” | Lásd R47, R48 | ✅ |
 | R55 | „Mintaadatok … valamint néhány kipróbálható API-kérés” | Lásd R7, R21 | ✅ |
 | R56 | README: „választott probléma és a megvalósított funkciók” | README 1 | ✅ |
