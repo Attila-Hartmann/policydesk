@@ -29,7 +29,7 @@ def setup_logging(level: str) -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     logging.basicConfig(level=level.upper(), handlers=[handler], force=True)
-    for noisy in ("httpx", "httpcore", "openai"):  # they would log full request URLs at INFO/DEBUG
+    for noisy in ("httpx", "httpx2", "httpcore", "openai"):  # they would log full request URLs at INFO/DEBUG
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
 

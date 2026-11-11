@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     reasoning_effort: str | None = None  # sent only when set (e.g. "none" for OpenAI reasoning models)
 
     # Retrieval. The threshold belongs to the embedding model: recalibrate it when that changes (ADR-004).
-    min_relevance_score: float = Field(0.5, gt=0, lt=1)
+    min_relevance_score: float = Field(0.55, gt=0, lt=1)
     top_k: int = Field(4, ge=1, le=10)
 
     # Failure policy (ADR-005).
