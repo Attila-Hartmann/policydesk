@@ -1,0 +1,51 @@
+# Local mode:  cp .env.example .env         && docker compose up --build
+# Cloud mode:  cp .env.openai.example .env  (add API_KEY) && docker compose up --build
+# COMPOSE_PROFILES in .env decides whether the Ollama services start. Requires Docker Compose 2.20 or newer.
+
+services:
+  ollama:
+    image: ollama/ollama:0.40.16
+    profiles: [local]
+    environment:
+      OLLAMA_NUM_PARALLEL: "1"        # one generation at a time on CPU; matches MAX_CONCURRENT_MODEL_CALLS=1
+      OLLAMA_CONTEXT_LENGTH: "8192"   # the longest prompt is ~2k tokens; Ollama truncates silently above the limit
+      OLLAMA_KEEP_ALIVE: "1h"         # keep models in memory between questions instead of reloading after 5 min
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # One-shot: downloads the models on first start (~4 GB), and is a no-op after that, also offline.
+  ollama-pull:
+    image: ollama/ollama:0.40.16
+    profiles: [local]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      CHAT_MODEL: ${CHAT_MODEL:?set CHAT_MODEL in .env}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:?set EMBEDDING_MODEL in .env}
+    entrypoint:
+      - sh
+      - -c
+      - for m in "$$CHAT_MODEL" "$$EMBEDDING_MODEL"; do ollama show "$$m" >/dev/null 2>&1 || ollama pull "$$m" || exit 1; done
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  api:
+    build: .
+    image: policydesk
+    env_file: .env
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets BASE_URL point at an Ollama running on the host, on Linux too
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+        required: false   # cloud mode: the Ollama services are not started at all
+
+volumes:
+  ollama:
