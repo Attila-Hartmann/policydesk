@@ -1,24 +1,24 @@
-# ADR-003: Exact in-memory vector search over a JSON index file
+# ADR-003: Pontos, memóriabeli vektoros visszakeresés JSON indexfájl felett
 
-Status: accepted
+Állapot: elfogadva
 
-## Context
+## Háttér
 
-About 50 chunks of 1,024–1,536 dimensions. The index changes only when the documents change. It is rebuilt at container start when the fingerprint differs. One API instance in the reference setup.
+57 chunk, 1 024 dimenzióval (helyi, `bge-m3`) vagy 3 072-vel (felhő, `text-embedding-3-large`). Az index csak akkor változik, amikor a dokumentumok vagy az embedding modell változik; a konténer indításakor csak akkor épül újra, ha az ujjlenyomata eltér, és egy Docker-kötetben él, így az újra létrehozott konténerek újrahasználják. A referencia beállításban egyetlen API-példány fut.
 
-## Decision
+## Döntés
 
-Ingest writes `var/index.json`: metadata (embedding model, dimensions, fingerprint, built_at), chunks and float32 vectors. The API loads it once at startup into a normalised NumPy matrix and answers each query with one matrix-vector product (exact cosine similarity), then sorts, applies the threshold and takes the top k.
+Az ingest a `var/index.json` fájlt írja: metaadatokat (embedding modell, dimenziók, ujjlenyomat, built_at), chunkokat és float32 vektorokat. Az API indításkor egyszer betölti egy normalizált NumPy mátrixba, és minden lekérdezést egyetlen mátrix-vektor szorzattal válaszol meg (pontos koszinusz hasonlóság), majd rendez, alkalmazza a küszöböt és kiveszi a top k elemet.
 
-The file is written atomically (temp file and rename), so a running reader never sees a half-written index.
+A fájl atomikusan íródik (ideiglenes fájl és átnevezés), így egy futó olvasó soha nem lát félig megírt indexet.
 
-## Alternatives
+## Alternatívák
 
-- **Chroma / FAISS / LanceDB**: approximate or embedded vector stores. At 50 vectors exact search is already sub-millisecond, so they add dependency weight and opaque on-disk formats for no gain.
-- **pgvector or Azure AI Search**: the right choice when there are several writers, many instances, a corpus that doesn't fit in memory, metadata filtering or hybrid search. They add a service to run and a migration story. This is the documented next step, not the starting point.
+- **Chroma / FAISS / LanceDB**: közelítő vagy beágyazott vektortárak. 57 vektornál a pontos keresés már szubmilliszekundumos, így a függőségi súlyt és az átláthatatlan lemezes formátumokat bármilyen előny nélkül hoznák.
+- **pgvector vagy Azure AI Search**: a helyes választás, ha több író folyamat, sok példány, memóriába nem férő korpusz, metaadat-szűrés vagy hibrid keresés van. Hozzáadnak egy üzemeltetendő szolgáltatást és migrációs terhet. Ez a dokumentált következő lépés, nem a kiindulópont.
 
-## Consequences
+## Következmények
 
-- Several instances each hold their own read-only copy: fine while the index is small and rebuilt by a deploy or an ingest job, wrong once documents change at runtime.
-- Memory is chunks × dimensions × 4 bytes (float32): 50 × 1,536 is about 0.3 MB. At 100k chunks it would be ~600 MB per instance, and the JSON file would be several GB of text, slow to load long before search time matters. That is the point to switch (to a binary format at first, then to a real store).
-- JSON is inspectable with any editor, which helps debugging and review.
+- Több példány mindegyike a saját, csak olvasható másolatát tartja: rendben van, amíg az index kicsi és egy deploy vagy egy ingest job építi újra, viszont helytelen, amint a dokumentumok futásidőben változnak.
+- A memória chunks × dimenziók × 4 bájt (float32): 57 × 3 072 körülbelül 0,7 MB. 100k chunk és 3 072 dimenzió esetén példányonként ~1,2 GB lenne, a JSON fájl pedig több GB szöveg lenne, lassan betölthető, jóval azelőtt, hogy a keresési idő számítana. Ez a váltás pontja (először bináris formátumra, majd egy valódi vektortárra).
+- A JSON bármilyen szerkesztővel vizsgálható, ami segít a hibakeresésben és a review-ban.

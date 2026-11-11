@@ -1,41 +1,41 @@
-# ADR-004: A calibrated relevance threshold; no hits is a normal answer without a model call
+# ADR-004: Kalibrált relevanciaküszöb; a nincs találat normális válasz, modellhívás nélkül
 
-Status: accepted
+Állapot: elfogadva
 
-## Context
+## Háttér
 
-The app must handle "no relevant hits" sensibly. Cosine-similarity scores are not comparable across embedding models. Hypothesis, checked below: each model has its own baseline for unrelated text, so a single hard-coded threshold would be wrong for one of the two modes. Questions can be Hungarian while the documents are English, and cross-lingual scores are expected to run lower than same-language ones.
+Az alkalmazásnak értelmesen kell kezelnie a "nincs releváns találat" esetet. A koszinusz-hasonlósági pontszámok embedding-modellenként nem összemérhetők. A hipotézis, amelyet alább ellenőriztem: minden modellnek megvan a maga alapszintje a nem kapcsolódó szövegekre, így egyetlen fix küszöb az egyik módban biztosan rossz lenne. A kérdések lehetnek magyarok, miközben a dokumentumok angolok, és a keresztnyelvű pontszámok várhatóan alacsonyabbak, mint az egynyelvűek.
 
-## Decision
+## Döntés
 
-- `MIN_RELEVANCE_SCORE` is configuration, set per embedding model in each `.env` sample.
-- The value is calibrated: `python -m policydesk search "<question>"` prints the top scores without calling the chat model. For each embedding model I ran in-domain English, in-domain Hungarian and off-domain questions. The threshold goes below the lowest in-domain score and above the off-domain cluster. Measurements are below.
-- If no chunk reaches the threshold, the API returns `200` with `outcome: "no_relevant_context"`, a fixed bilingual answer and no sources, and the chat model is not called.
+- A `MIN_RELEVANCE_SCORE` konfiguráció, embedding-modellenként állítjuk be az egyes `.env` mintákban.
+- Az érték kalibrált: a `python -m scripts.calibrate` (egy-egy kérdésre a `python -m policydesk search "<kérdés>"`) kiírja a legjobb pontszámokat a chat-modell hívása nélkül. Minden embedding-modellnél lefuttattam domainen belüli angol, domainen belüli magyar és domainen kívüli kérdéseket. A küszöb a legalacsonyabb domainen belüli pontszám alá és a domainen kívüli klaszter fölé esik. A mérések alább találhatók.
+- Ha egyetlen chunk sem éri el a küszöböt, az API `200`-at ad vissza `outcome: "no_relevant_context"` értékkel, egy fix kétnyelvű válasszal és források nélkül, és a chat-modellt nem hívjuk meg.
 
-## Measurements
+## Mérések
 
-Top-1 cosine score per question; 12 questions per group, run on 2026-11-11 with [`scripts/calibrate.py`](../../scripts/calibrate.py) (same index and search code as the API; rerun it after changing the embedding model).
+Top-1 koszinusz-pontszám kérdésenként; csoportonként 12 kérdés, 2026-11-11-én futtatva a [`scripts/calibrate.py`](../../scripts/calibrate.py) segítségével (`python -m scripts.calibrate`; ugyanaz az index és keresőkód, mint az API-ban; az embedding-modell váltása után újra kell futtatni).
 
-| Embedding model | In-domain English | In-domain Hungarian | Off-domain (EN + HU) | Threshold |
+| Embedding-modell | Domainen belüli angol | Domainen belüli magyar | Domainen kívüli (EN + HU) | Küszöb |
 |---|---|---|---|---|
-| `bge-m3` (local) | 0.611 – 0.773 | 0.586 – 0.748 | 0.297 – 0.529 | **0.55** |
-| `text-embedding-3-large` (cloud) | 0.458 – 0.722 | 0.403 – 0.685 | 0.081 – 0.375 | **0.39** |
-| `text-embedding-3-small` (rejected) | 0.478 – 0.717 | 0.266 – 0.578 | 0.085 – 0.369 | none possible |
+| `bge-m3` (helyi) | 0.611 â€“ 0.773 | 0.586 â€“ 0.748 | 0.297 â€“ 0.529 | **0.55** |
+| `text-embedding-3-large` (felhő) | 0.458 â€“ 0.722 | 0.403 â€“ 0.685 | 0.081 â€“ 0.375 | **0.39** |
+| `text-embedding-3-small` (elvetve) | 0.478 â€“ 0.717 | 0.266 â€“ 0.578 | 0.085 â€“ 0.369 | nincs lehetséges |
 
-- The hypothesis held: the two models' baselines differ (off-domain maxima 0.53 vs 0.38), and cross-lingual scores run lower than same-language ones.
-- `text-embedding-3-small` was the original cloud choice. Its Hungarian scores overlap the off-domain range, and for several Hungarian questions the top hit was the wrong section, so no threshold works; it was replaced by `text-embedding-3-large`.
-- With `bge-m3` every in-domain question, English and Hungarian, had the correct section as its top hit.
-- Both margins are thin (0.529 → 0.586 and 0.375 → 0.403). The highest off-domain scores came from questions that mention Budapest or Hungary, words that also occur in the policies.
+- A hipotézis beigazolódott: a két modell alapszintje eltér (a domainen kívüli maximumok 0.53 vs 0.38), és a keresztnyelvű pontszámok alacsonyabbak, mint az egynyelvűek.
+- A `text-embedding-3-small` volt az eredeti felhős választás. A magyar pontszámai átfednek a domainen kívüli tartománnyal, és több magyar kérdésnél a legfelső találat a rossz szakasz volt, így egyetlen küszöb sem működik; helyette a `text-embedding-3-large` került be.
+- A `bge-m3`-mal minden domainen belüli kérdésnél, angolul és magyarul is a helyes szakasz volt a legfelső találat.
+- Mindkét határ szűk (0.529 â†’ 0.586 és 0.375 â†’ 0.403). A legmagasabb domainen kívüli pontszámok azokból a kérdésekből jöttek, amelyek Budapestet vagy Magyarországot említik, olyan szavakat, amelyek a szabályzatokban is előfordulnak.
 
-## Alternatives
+## Alternatívák
 
-- **Always call the model and let it say "I don't know"**: costs a model call per off-topic question and relies on a small local model to refuse reliably. The prompt still tells the model to refuse, as a second line of defence for borderline hits.
-- **Top-k without a threshold**: the model always gets some context, even for "What's the weather?", which invites confident nonsense.
-- **Reranker score threshold**: better calibrated across queries, but adds a model. Next step if borderline questions turn out to matter.
-- **Return 404 for no hits**: the request was valid and the service worked. "Nothing found" is a result, and clients shouldn't treat it as an error.
+- **Mindig hívjuk a modellt, és hagyjuk, hogy "nem tudom"-ot mondjon**: modellhívásba kerül minden témán kívüli kérdés, és egy kis helyi modellre bízza a megbízható elutasítást. A prompt továbbra is utasítja a modellt az elutasításra, második védelmi vonalként a határesetekre.
+- **Top-k küszöb nélkül**: a modell mindig kap valamilyen kontextust, még a "Milyen idő van?" kérdésre is, ami magabiztos butaságot hív elő.
+- **Reranker-pontszám küszöb**: jobban kalibrált lekérdezések között, de plusz modellt igényel. Következő lépés, ha a határesetek fontossá válnak.
+- **404 visszaadása találat hiányában**: a kérés érvényes volt, és a szolgáltatás működött. A "semmit nem találtam" egy eredmény, és a klienseknek nem kellene hibaként kezelniük.
 
-## Consequences
+## Következmények
 
-- Changing the embedding model means recalibrating; the README and `.env` samples say so next to the variable.
-- The calibration set is small (36 questions). A larger labelled set, run in CI, is the first next step if the threshold starts to matter more.
-- Borderline questions (a relevant word in an off-topic question) can pass the threshold. The prompt's refusal rule handles most of these.
+- Az embedding-modell váltása újrakalibrálást jelent; a README és a `.env` minták ezt írják a változó mellett.
+- A kalibrációs halmaz kicsi (36 kérdés). Egy nagyobb, címkézett halmaz CI-ben futtatva az első következő lépés, ha a küszöb fontosabbá válik.
+- A határesetek (egy releváns szó egy témán kívüli kérdésben) átjuthatnak a küszöbön. A prompt elutasítási szabálya a legtöbbjüket kezeli.

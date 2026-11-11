@@ -1,25 +1,26 @@
-# ADR-002: Section-based Markdown chunking with deterministic IDs
+# ADR-002: Szekcióalapú Markdown-darabolás determinisztikus ID-kkal
 
-Status: accepted
+Állapot: elfogadva
 
-## Context
+## Háttér
 
-The corpus is ~10 short policy documents written in Markdown, each a set of headed sections (one rule or topic per section). Answers usually live in one section; some questions span two documents.
+A korpusz 9 rövid szabályzat Markdownban, mindegyik fejlécekkel tagolt szekciók halmaza (szekciónként egy szabály vagy téma). A válaszok általában egy szekcióban találhatók; néhány kérdés két dokumentumot is átfog.
 
-## Decision
+## Döntés
 
-- One chunk per `##`/`###` section. The chunk text starts with `<document title> › <section heading>`, so each chunk carries its context for both the embedding and the model.
-- Sections longer than 1,200 characters are split at paragraph boundaries into pieces of at most 1,200 characters. No overlap: boundaries are semantic, so overlap would mostly duplicate text.
-- Chunk IDs are `<file-stem>:<NN>` in document order. Files are read in sorted order with normalised line endings, so the same files always produce the same chunks and IDs.
-- The index fingerprint is a SHA-256 of the chunk texts, the chunker parameters and the embedding model. Ingest skips work when the fingerprint is unchanged.
+- Az első `#` fejléc a dokumentum címe. Minden további fejléc szekciót nyit, amelyet a fejlécútvonala nevez meg (a `##` alatti `###` esetén `Parent â€ş Child`). Az első szekció előtti szöveg egy „Overview” chunkká válik. A kódblokkokon belüli fejlécek szövegnek számítanak.
+- Szekciónként egy chunk. A chunk szövege a `<document title> â€ş <section path>` előtaggal kezdődik, így minden chunk magával hordozza a kontextusát mind a beágyazáshoz, mind a modellhez.
+- Az 1 200 karakternél hosszabb szekciótörzseket bekezdéshatárokon daraboljuk legfeljebb 1 200 karakteres darabokra (a címelőtag ezen felül jön). Egyetlen hosszabb bekezdés egyben marad. Átfedés nincs: a határok szemantikusak, így az átfedés többnyire csak ismételné a szöveget.
+- A chunk ID-k `<file-stem>:<NN>` formájúak dokumentumsorrendben. A fájlokat rendezett sorrendben, normalizált soremelésekkel olvassuk, így ugyanazokból a fájlokból mindig ugyanazok a chunkok és ID-k keletkeznek.
+- Az index ujjlenyomata a chunk szövegek, a daraboló paraméterei és a beágyazási modell SHA-256 hash-e. Az ingest kihagyja a munkát, ha az ujjlenyomat változatlan.
 
-## Alternatives
+## Alternatívák
 
-- **Fixed-size windows with overlap** (e.g. 500 tokens / 50 overlap): format-agnostic, but splits rules mid-sentence and needs a tokenizer dependency. Better for long unstructured text, which this corpus isn't.
-- **LangChain `MarkdownHeaderTextSplitter`**: same idea, extra dependency, less control over IDs. Our splitter is ~40 lines and unit-tested.
-- **Whole documents as chunks**: documents are short, but whole-document vectors blur distinct rules and waste context tokens.
+- **Rögzített méretű ablakok átfedéssel** (pl. 500 token / 50 átfedés): formátumfüggetlen, de szabályokat vág félbe mondatokon belül, és tokenizer függőséget igényel. Hosszú, strukturálatlan szövegekhez jobb, de ez a korpusz nem ilyen.
+- **LangChain `MarkdownHeaderTextSplitter`**: ugyanaz az ötlet, extra függőség, kevesebb kontroll az ID-k felett. A saját darabolónk ~50 sor és unit-tesztekkel fedett, beleértve a határeseteket (késői cím, egymásba ágyazott fejlécek, kódblokkok, `#`-re végződő fejlécek).
+- **Teljes dokumentumok chunkként**: a dokumentumok rövidek, de a teljes dokumentumos vektorok elmossák a különálló szabályokat és kontextustokeneket pazarolnak.
 
-## Consequences
+## Következmények
 
-- Retrieval quality depends on documents having sensible headings. That holds for policies, and the README says so.
-- Content-based IDs (hashes) would survive section reordering; positional IDs are more readable in responses. At this size, readability wins.
+- A visszakeresés minősége attól függ, hogy a dokumentumoknak értelmes fejléceik legyenek. Ez a szabályzatokra igaz, és a README is ezt mondja.
+- A tartalom alapú ID-k (hashek) túlélnék a szekciók átrendezését; a pozicionális ID-k olvashatóbbak a válaszokban. Ezen a méreten az olvashatóság nyer.

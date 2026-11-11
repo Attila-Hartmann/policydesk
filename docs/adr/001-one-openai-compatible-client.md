@@ -1,27 +1,27 @@
-# ADR-001: One OpenAI-compatible client for cloud and local models
+# ADR-001: Egyetlen OpenAI-kompatibilis kliens felhős és lokális modellekhez
 
-Status: accepted
+Állapot: elfogadva
 
-## Context
+## Háttér
 
-The brief requires a paid cloud mode and a free local mode, switched by configuration only, with provider-specific details kept in one place. The candidates for the cloud are OpenAI and Azure OpenAI; for local, Ollama.
+A feladatkiírás fizetős felhős módot és ingyenes lokális módot ír elő, amelyeket kizárólag konfigurációval lehet váltani, a szolgáltató-specifikus részleteket pedig egy helyen kell tartani. A felhőhöz az OpenAI és az Azure OpenAI a jelölt; a lokálishoz az Ollama.
 
-All three serve the same OpenAI-compatible HTTP API for chat completions and embeddings: OpenAI natively, Azure OpenAI through its v1 endpoint (`https://<resource>.openai.azure.com/openai/v1/`, GA since August 2025), Ollama under `/v1`.
+Mindhárom ugyanazt az OpenAI-kompatibilis HTTP API-t szolgálja ki chat completion és embedding hívásokhoz: az OpenAI natívan, az Azure OpenAI a v1 végpontján keresztül (`https://<resource>.openai.azure.com/openai/v1/`, 2025 augusztusa óta GA), az Ollama pedig a `/v1` alatt.
 
-## Decision
+## Döntés
 
-Use the official `openai` Python SDK (async client) for every mode. The mode is a set of environment variables: `BASE_URL`, `API_KEY`, `CHAT_MODEL`, `EMBEDDING_MODEL`, plus optional request parameters (`REASONING_EFFORT`). `providers.py` is the only module that imports `openai`; it builds the clients and translates SDK exceptions into domain errors.
+Minden módhoz a hivatalos `openai` Python SDK-t (async kliens) használjuk. A módot környezeti változók halmaza jelöli: `BASE_URL`, `API_KEY`, `CHAT_MODEL`, `EMBEDDING_MODEL`, valamint opcionális kérési paraméterek (`REASONING_EFFORT`). A `providers.py` az egyetlen modul, amely importálja az `openai`-t; ez építi fel a klienseket, és fordítja le az SDK kivételeit saját (domain) hibatípusokká.
 
-The application depends on two small protocols, `ChatModel` and `Embedder`. Their second implementations are the fakes the tests use.
+Az alkalmazás két kis protokolltól függ, a `ChatModel`-től és az `Embedder`-től. Mindkettő második megvalósítása a tesztekben használt hamis (fake) modell.
 
-## Alternatives
+## Alternatívák
 
-- **LangChain chat model classes** (`ChatOpenAI`, `ChatOllama`, `AzureChatOpenAI`): one class per provider means provider choice in code, more dependencies, and the same HTTP calls underneath. Rejected.
-- **One adapter class per provider behind an interface**: three implementations of the same protocol, differing only in base URL. Rejected as an abstraction without a real difference.
-- **Ollama native API** (`/api/chat`): gives access to `think` and `keep_alive`, but makes the local mode a separate code path. Not needed with a non-thinking model.
+- **LangChain chat model osztályok** (`ChatOpenAI`, `ChatOllama`, `AzureChatOpenAI`): szolgáltatónként egy osztály azt jelenti, hogy a szolgáltató választása kódba kerül, több függőség, és ugyanazok a HTTP hívások a háttérben. Elvetve.
+- **Szolgáltatónként egy adapter-osztály egy interfész mögött**: ugyanannak a protokollnak három implementációja, amelyek csak a base URL-ben térnek el. Elvetve mint olyan absztrakció, amely mögött nincs valódi különbség.
+- **Ollama natív API** (`/api/chat`): hozzáférést ad a `think` és `keep_alive` paraméterekhez, de a lokális módot külön kódrészletté teszi. Egy nem-gondolkodó modellel erre nincs szükség.
 
-## Consequences
+## Következmények
 
-- Switching mode never touches code; the same image runs every mode.
-- A provider without an OpenAI-compatible API (for example Bedrock's Converse API) would need a second `ChatModel` implementation. The protocol is the seam for that; it is not built now.
-- Provider quirks are config, not code: `REASONING_EFFORT=none` is sent only when set, because Ollama doesn't need it.
+- A módváltás soha nem érinti a kódot; ugyanaz az image fut minden módban.
+- Egy OpenAI-kompatibilis API-val nem rendelkező szolgáltatóhoz (például a Bedrock Converse API-ja) egy második `ChatModel` implementáció kellene. A protokoll az a csatlakozási pont, ahol ez beköthető; most nincs megépítve.
+- A szolgáltatói sajátosságok konfigurációban vannak, nem kódban: a `REASONING_EFFORT=none` értéket csak akkor küldjük el, ha be van állítva, mert az Ollamának nincs rá szüksége.

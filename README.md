@@ -46,7 +46,7 @@ cp .env.example .env          # PowerShell: Copy-Item .env.example .env
 docker compose up --build
 ```
 
-Az első indítás letölti az Ollama-image-et és a két modellt (kb. 3,7 GB modell), ezután indexel és ellenőrzi a modelleket. Akkor kész, amikor a naplóban megjelenik a `Uvicorn running on http://0.0.0.0:8000` sor (vagy a `docker compose ps` az `api` szolgáltatást `healthy`-nek mutatja). Egy másik terminálban:
+Az első indítás **kb. 12 GB-ot tölt le** (Ollama-image 8,5 GB, a két modell 3,7 GB; az időtartam a kapcsolaton múlik), ezután indexel (`index_batch_embedded` sorok a naplóban) és ellenőrzi a modelleket. Akkor kész, amikor a naplóban megjelenik a `Uvicorn running on http://0.0.0.0:8000` sor: az első alkalommal a letöltés után, letöltött modellekkel kb. másfél perc, később kb. 10 s. Háttérben futtatva (`docker compose up -d --build`) a `docker compose ps` mutatja, mikor lesz az `api` `healthy`. Egy másik terminálban:
 
 ```bash
 curl -s -H "Content-Type: application/json" --data-binary "@examples/ask-en.json" http://localhost:8000/ask
@@ -98,7 +98,7 @@ flowchart LR
 | Modell- és tárolóintegráció | [`providers.py`](policydesk/providers.py), [`store.py`](policydesk/store.py) | OpenAI-kompatibilis kliens és hibafordítás; vektorindex |
 | Konfiguráció | [`config.py`](policydesk/config.py), `.env` | Minden beállítás környezeti változóból, indításkori ellenőrzéssel |
 
-Az `openai` csomagot egyetlen modul, a `providers.py` importálja. Ott fordítódnak le a szolgáltatói kivételek saját hibatípusokra (`ModelTimeout`, `ModelRateLimited`, `ModelError`), így a felsőbb rétegek nem tudják, melyik szolgáltató van mögöttük. A cserélhetőség két kis interfészen ([`ports.py`](policydesk/ports.py): `ChatModel`, `Embedder`) múlik; mindkettőnek van valódi és teszthez használt hamis megvalósítása.
+Az `openai` csomagot egyetlen modul, a `providers.py` importálja. Ott fordítódnak le a szolgáltatói kivételek saját hibatípusokra (`ModelTimeout`, `ModelRateLimited`, `ModelError`), így a felsőbb rétegek nem tudják, melyik szolgáltató van mögöttük. A hibatípusok nem ismerik a HTTP-t: a hibakód → státuszkód leképezés egyetlen helyen, az `api.py`-ban van. A cserélhetőség két kis interfészen ([`ports.py`](policydesk/ports.py): `ChatModel`, `Embedder`) múlik; mindkettőnek van valódi és teszthez használt hamis megvalósítása.
 
 ### 3.2 Kérdés feldolgozása
 
@@ -197,19 +197,21 @@ A [gyorsindítás](#2-gyorsindítás) lépései. Hasznos parancsok:
 | Indítás háttérben | `docker compose up -d --build` |
 | Állapot | `docker compose ps` (az `api` legyen `healthy`) |
 | Naplók | `docker compose logs -f api` |
+| Dokumentum hozzáadása vagy módosítása | fájl a `data/policies/` mappába, majd `docker compose restart api` |
 | Leállítás | `docker compose --profile local down` (a letöltött modellek az `ollama` kötetben maradnak). Profil nélkül, felhős `.env`-vel a `down` nem látja az Ollama-konténereket. |
 | Módváltás | `docker compose --profile local down`, másik `.env`, majd `docker compose up --build` |
 | Minden törlése, modellekkel együtt | `docker compose --profile local down -v` |
 
 ### 4.2 Adat-előkészítés
 
-Nincs külön lépés: induláskor a `serve` parancs elkészíti az indexet a `data/policies/*.md` fájlokból (lásd [3.4](#34-indulás-és-indexelés)). Saját dokumentumokhoz tegyél Markdown-fájlokat ugyanoda (`#` cím, `##` szakaszok), és indítsd újra a konténert; az ujjlenyomat változása miatt az index újraépül. Kézzel, Docker nélkül: `uv run python -m policydesk ingest`.
+Nincs külön lépés: induláskor a `serve` parancs elkészíti az indexet a `data/policies/*.md` fájlokból (lásd [3.4](#34-indulás-és-indexelés)). Saját dokumentumokhoz tegyél Markdown-fájlokat ugyanoda (`#` cím, `##` szakaszok), majd `docker compose restart api`. A `data/policies` mappa csak olvashatóan be van csatolva a konténerbe, az index pedig egy Docker-kötetben (`index`) marad meg: induláskor csak akkor épül újra, ha a dokumentumok vagy az embedding-modell megváltoztak (az ujjlenyomat alapján), egyébként a meglévőt tölti be. A parancssori eszközök a futó konténerben is elérhetők, például egy kérdés visszakeresési pontszámai chat-hívás nélkül: `docker compose exec api python -m policydesk search "meal allowance Vienna"`. Docker nélkül (4.3): `uv run python -m policydesk ingest`.
 
 ### 4.3 Docker nélkül
 
 1. [uv](https://docs.astral.sh/uv/) telepítése:
    - macOS / Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
    - Windows (PowerShell): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+   - Telepítés után nyiss új terminált, hogy a `uv` a PATH-on legyen.
 2. Függőségek (a `uv.lock` szerint, szükség esetén Python 3.12-t is telepít): `uv sync`
 3. Modellszerver: lokális módban [Ollama](https://ollama.com/download) a gépen, majd `ollama pull qwen3:4b-instruct` és `ollama pull bge-m3`.
 4. Konfiguráció: `cp .env.example .env`, és a `.env`-ben `BASE_URL=http://localhost:11434/v1` (a gépen futó app az Ollamát `localhost`-on éri el, nem `ollama` néven). Felhős módban `.env.openai.example` és API-kulcs.
@@ -219,13 +221,13 @@ Nincs külön lépés: induláskor a `serve` parancs elkészíti az indexet a `d
 
 | Mit | Parancs | Mit igényel |
 |---|---|---|
-| Gyors tesztcsomag (84 teszt, kb. 5 s) | `uv run pytest` | Semmit: hamis modellek, nincs hálózat, nincs kulcs |
-| Lefedettséggel (küszöb: 85%) | `uv run pytest --cov` | |
-| Lint, formázás, típusok | `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy` | |
-| Ugyanez uv nélkül | `docker build --target test .` | Docker |
-| Integrációs tesztek (6 teszt) | `docker compose up -d --build`, majd ha az `api` `healthy`: `uv run pytest -m integration` | Futó API valódi modellekkel; a `API_URL` változóval más címre irányítható |
+| Gyors tesztcsomag (99 teszt, kb. 5–15 s) | `uv run pytest` | Semmit: hamis modellek, nincs hálózat, nincs kulcs |
+| Lefedettséggel (küszöb: 85%) | `uv run pytest --cov` | Ugyanaz |
+| Lint, formázás, típusok | `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy` | Ugyanaz |
+| Mindhárom uv nélkül (lint, típusok, tesztek lefedettséggel) | `docker build --target test -t policydesk-test .` | Docker. Változatlan forrásnál a Docker a gyorsítótárból veszi az eredményt; újrafuttatáshoz `--no-cache`. |
+| Integrációs tesztek (6 teszt; lokálisan kb. 1–2 perc, felhőben kb. 10 s) | `docker compose up -d --build`, majd ha az `api` `healthy`: `uv run pytest -m integration` | Futó API valódi modellekkel; az `API_URL` változóval más címre irányítható. Ha nem fut API, a tesztek hibával állnak le (nem ugorják át csendben). |
 
-Az integrációs tesztek alapból ki vannak hagyva (`-m 'not integration'` a `pyproject.toml`-ban). Fekete dobozként a futó API-t hívják, ezért ugyanaz a csomag ellenőrzi a lokális és a felhős módot: angol kérdés a helyes szakaszból, magyar kérdés az angol szabályzatból, két dokumentumot érintő kérdés, témán kívüli kérdés modellhívás nélkül, üres kérdés 422-vel. A CI (GitHub Actions) minden pushnál futtatja a lintet, a típusellenőrzést, a gyors teszteket lefedettséggel, a Docker-buildet, a Compose-fájl ellenőrzését mindkét módban, és azt, hogy elérhetetlen modellnél a konténer érthető üzenettel, 1-es kóddal áll le.
+Az integrációs tesztek alapból ki vannak hagyva (`-m 'not integration'` a `pyproject.toml`-ban). Fekete dobozként a futó API-t hívják, ezért ugyanaz a csomag ellenőrzi a lokális és a felhős módot: angol kérdés a helyes szakaszból, magyar kérdés az angol szabályzatból, két dokumentumot érintő kérdés, témán kívüli kérdés modellhívás nélkül, üres kérdés 422-vel. A CI (GitHub Actions) a `main` ágra érkező minden pushnál és minden pull requestnél futtatja a lintet, a típusellenőrzést, a gyors teszteket lefedettséggel, a Docker-buildet, a Compose-fájl ellenőrzését mindkét módban, és azt, hogy elérhetetlen modellnél a konténer érthető üzenettel, 1-es kóddal áll le.
 
 A fontos működési utak tesztjei ([`tests/test_api.py`](tests/test_api.py)):
 
@@ -264,7 +266,7 @@ A hibás konfiguráció indításkor derül ki: a tartományon kívüli értéke
 
 - **Chat: `gpt-6-luna`**, `reasoning_effort=none`. Az OpenAI jelenlegi leghatékonyabb modellje ([modelloldal](https://developers.openai.com/api/docs/models/gpt-6-luna), 2026. 11. 11.): 0,10 / 0,50 USD millió bemeneti / kimeneti tokenenként. A feladat a megadott részletekből válaszolni, nem következtetni, ezért a gondolkodást kikapcsoljuk (alapból `medium`), ami gyorsabb és olcsóbb. A modelloldal szerint EU-s adattárolással (data residency) is elérhető.
 - **Embedding: `text-embedding-3-large`** (3072 dimenzió), 0,13 USD / millió token. Először a hatszor olcsóbb `text-embedding-3-small`-t választottam, de a kalibrálás megmutatta, hogy a magyar kérdéseket rosszul illeszti az angol szövegekhez: több magyar kérdésnél rossz szakasz lett az első találat, és a legrosszabb magyar kérdés pontszáma (0,266) a témán kívüli kérdések legjobbja (0,369) alá esett, így küszöbbel nem lehetett szétválasztani őket. A `3-large`-nál a két csoport szétválik (lásd lent). A költségkülönbség itt elhanyagolható: a teljes korpusz indexelése kb. 4 000 token, egy kérdés beágyazása kb. 20 token.
-- **Mért költség és késleltetés:** a mintakérdéseknél 300–630 bemeneti és 40–120 kimeneti token, azaz kb. 0,0001 USD kérdésenként; a válaszidő 1,6–2,5 s, ebből a generálás 1,3–2,7 s. Az integrációs tesztcsomag (6 teszt) felhős módban 8 s alatt fut le.
+- **Mért költség és késleltetés:** a mintakérdéseknél 300–630 bemeneti és 40–120 kimeneti token, azaz kb. 0,0001 USD kérdésenként; a teljes válaszidő 1,3–2,7 s volt. Az integrációs tesztcsomag (6 teszt) felhős módban 8 s alatt fut le.
 
 **Relevanciaküszöb kalibrálása** (`text-embedding-3-large`, ugyanazzal a 36 kérdéssel, mint a lokális módnál, lásd 5.2):
 
@@ -300,9 +302,10 @@ A küszöb `0,39`. A legmagasabb pontszámú témán kívüli kérdés itt a „
 |---|---|
 | Lemez | Ollama-image 8,5 GB, modellek 3,7 GB, alkalmazás-image 0,4 GB |
 | Memória | Ollama-konténer kb. 5,1 GiB mindkét modellel betöltve (korábbi futásnál 7,5 GiB-ot is láttam); API-konténer kb. 100 MiB |
-| Indulás (letöltött modellekkel) | 86 s a `healthy` állapotig: indexelés (57 darab) kb. 45 s, modellellenőrzés kb. 16 s |
-| Válaszidő, új kérdés | 12–50 s (prompt-feldolgozás kb. 35 token/s, generálás kb. 4 token/s) |
-| Válaszidő, ismételt kérdés | kb. 2 s (az Ollama gyorsítótárazza a prompt elejét) |
+| Első indulás | 465 s a `healthy` állapotig, ebből a 3,7 GB modell letöltése kb. 6 perc (az Ollama-image már megvolt; a letöltési idő a kapcsolaton múlik) |
+| Indulás letöltött modellekkel, új indexszel | 75–90 s: indexelés (57 darab) 40–70 s, modellellenőrzés 14–33 s |
+| Újraindítás meglévő indexszel | kb. 11 s (az index a kötetből töltődik be) |
+| Válaszidő | 12–50 s kérdésenként (prompt-feldolgozás kb. 35 token/s, generálás kb. 4 token/s) |
 | Témán kívüli kérdés | 0,5 s alatt (nincs generálás) |
 
 **Ajánlott minimum:** 4 CPU-mag, 8 GB szabad memória a Dockernek, 13 GB szabad lemez. GPU nem kell; NVIDIA GPU-val vagy Apple Silicon gépen natív Ollamával sokkal gyorsabb. **macOS-en** a Docker nem éri el a GPU-t, ezért ott a natív Ollama ajánlott (`BASE_URL=http://host.docker.internal:11434/v1`, `COMPOSE_PROFILES=`).
@@ -317,7 +320,7 @@ A küszöb `0,39`. A legmagasabb pontszámú témán kívüli kérdés itt a „
 | Témához tartozó, magyar (12) | 0,586 | 0,748 |
 | Témán kívüli, angol és magyar (12) | 0,297 | 0,529 |
 
-A küszöb `0,55`. A rés kicsi (0,529 és 0,586 között); a legmagasabb pontszámú témán kívüli kérdés az „időjárás holnap Budapesten” volt, mert a szabályzatok említik a budapesti irodát. Ha más embedding-modellt választasz, a küszöböt újra kell kalibrálni: a [`scripts/calibrate.py`](scripts/calibrate.py) a fenti 36 kérdéssel kiírja a csoportonkénti pontszámokat (`uv run python scripts/calibrate.py`, futó modellszerverrel és felépített indexszel), egy-egy kérdésre pedig a `uv run python -m policydesk search "<kérdés>"` (chat-hívás nélkül). Részletek: [ADR-004](docs/adr/004-relevance-threshold.md).
+A küszöb `0,55`. A rés kicsi (0,529 és 0,586 között); a legmagasabb pontszámú témán kívüli kérdés az „időjárás holnap Budapesten” volt, mert a szabályzatok említik a budapesti irodát. Ha más embedding-modellt választasz, a küszöböt újra kell kalibrálni: a [`scripts/calibrate.py`](scripts/calibrate.py) a fenti 36 kérdéssel kiírja a csoportonkénti pontszámokat (a futó stackben: `docker compose exec api python -m scripts.calibrate`; Docker nélkül: `uv run python -m scripts.calibrate`), egy-egy kérdésre pedig a `uv run python -m policydesk search "<kérdés>"` (chat-hívás nélkül). Részletek: [ADR-004](docs/adr/004-relevance-threshold.md).
 
 ## 6. API
 
@@ -344,7 +347,6 @@ A lenti válaszok lokális módban, a fenti kérésekkel készültek (a `request
 
 ```json
 {
-  "request_id": "be77650f…",
   "outcome": "answered",
   "answer": "The daily meal allowance in Vienna is EUR 45 [1].",
   "sources": [
@@ -355,13 +357,14 @@ A lenti válaszok lokális módban, a fenti kérésekkel készültek (a `request
     {"chunk_id": "travel-and-expenses:04", "document": "travel-and-expenses.md", "title": "Travel and Expenses Policy",
      "section": "Accommodation", "score": 0.5787, "cited": false}
   ],
-  "model": "qwen3:4b-instruct"
+  "model": "qwen3:4b-instruct",
+  "request_id": "be77650f…"
 }
 ```
 
 A `sources` a modellnek átadott összes részlet, a legjobb egyezéssel kezdve; a `cited` azt mutatja, hogy a válasz `[n]` formában hivatkozott-e rá.
 
-**Magyar kérdés** (`ask-hu.json`: *Hány nap szabadság jár egy évben, és meddig vihetem át a ki nem vett napokat?*), rövidítve:
+**Magyar kérdés** (`ask-hu.json`: *Hány nap szabadság jár egy évben, és meddig vihetem át a ki nem vett napokat?*), rövidítve. A válasz a lokális modell szó szerinti szövege: tartalmilag helyes, a fogalmazása nehézkes (5.2, 8.).
 
 ```json
 {
@@ -381,11 +384,11 @@ A `sources` a modellnek átadott összes részlet, a legjobb egyezéssel kezdve;
 
 ```json
 {
-  "request_id": "6ff6f3f3…",
   "outcome": "no_relevant_context",
   "answer": "I could not find anything about this in the policy documents, so I cannot answer it. / Erről nem találtam információt a szabályzatokban, ezért nem tudok rá válaszolni.",
   "sources": [],
-  "model": null
+  "model": null,
+  "request_id": "6ff6f3f3…"
 }
 ```
 
@@ -410,7 +413,7 @@ A `sources` a modellnek átadott összes részlet, a legjobb egyezéssel kezdve;
  "index": {"documents": 9, "chunks": 57, "built_at": "2026-11-11T14:21:40+00:00"}}
 ```
 
-Nem hívja a modellt. A modelleket az indításkori ellenőrzés már igazolta; egy pénzbe kerülő, külső szolgáltatótól függő állapotellenőrzés miatt egy szolgáltatói kiesésnél az orkesztrátor feleslegesen újraindítaná az egészséges konténereket. A szolgáltatói gondok a hibaarány- és késleltetésmetrikákban látszanak (7. fejezet).
+Liveness-ellenőrzés: azt mutatja, hogy a folyamat él, az index betöltődött, és a modellek induláskor válaszoltak. Futás közben nem hívja a modellt: a modelleket az indításkori ellenőrzés már igazolta; egy pénzbe kerülő, külső szolgáltatótól függő állapotellenőrzés miatt egy szolgáltatói kiesésnél az orkesztrátor feleslegesen újraindítaná az egészséges konténereket. A szolgáltatói gondok a hibaarány- és késleltetésmetrikákban látszanak (7. fejezet).
 
 ### 6.3 Hibaformátum
 
@@ -433,14 +436,26 @@ Minden nem 2xx válasz ugyanilyen törzzsel és `X-Request-ID` fejléccel érkez
 
 A „nincs releváns találat” nem hiba (`200`). A hiányzó vagy más embedding-modellel épült index, illetve az elérhetetlen modell nem kérési hiba: ezekkel a szolgáltatás el sem indul. A hibás JSON-ra is 422 jön (a FastAPI szokása szerint): így a kliensnek egy ágon kell kezelnie a „hibás a kérésem” esetet, a `details` pedig megmondja, mi a baj.
 
-Élő stacken ellenőrizve: lokális módban egy párhuzamos második kérésre 5,4 s után `503 overloaded` jött `Retry-After: 10`-zel; `REQUEST_TIMEOUT_SECONDS=2` beállítással 2,02 s után `504 model_timeout`. Felhős módban `REQUEST_TIMEOUT_SECONDS=0.3` mellett 0,31 s után `504 model_timeout`.
+Élő stacken ellenőrizve: lokális módban egy párhuzamos második kérésre 5,4 s után `503 overloaded` jött `Retry-After: 10`-zel; `REQUEST_TIMEOUT_SECONDS=2` beállítással 2,02 s után `504 model_timeout`. Felhős módban `REQUEST_TIMEOUT_SECONDS=0.3` mellett 0,31 s után `504 model_timeout`. Így ismételhető meg (bash, futó lokális stackkel):
+
+```bash
+# 503 overloaded: két kérés egyszerre, lokálisan egy modellhely van
+curl -s -H "Content-Type: application/json" --data-binary "@examples/ask-en.json" http://localhost:8000/ask &
+sleep 1; curl -si -H "Content-Type: application/json" --data-binary "@examples/ask-cross.json" http://localhost:8000/ask
+
+# 504 model_timeout: egy második példány 2 s-os határidővel a 8001-es porton
+docker compose run -d --rm --name pd-timeout -e REQUEST_TIMEOUT_SECONDS=2 -e QUEUE_TIMEOUT_SECONDS=1 -p 8001:8000 api
+# amikor a http://localhost:8001/health válaszol:
+curl -s -H "Content-Type: application/json" --data-binary "@examples/ask-en.json" http://localhost:8001/ask
+docker rm -f pd-timeout
+```
 
 ### 6.4 Naplózás
 
-JSON-sorok a standard kimenetre. Minden sorban ott a `request_id`: a kérésben kapott `X-Request-ID` (ha biztonságos formájú, legfeljebb 64 karakter), különben egy generált azonosító, amely a válaszfejlécben és a hibatörzsben is visszamegy. Kérésenként: `retrieval` (találatok száma, legjobb pontszám, idő), `generation` (modell, idő, prompt- és válaszhossz tokenben, hivatkozott részletek száma) vagy `no_relevant_context`, végül `request` (metódus, útvonal, státusz, idő). **Soha nem naplózzuk** az API-kulcsot, a kérdés és a válasz szövegét (csak a hosszukat), mert egy munkatárs kérdésében személyes adat is lehet. Példa:
+JSON-sorok a standard kimenetre. Minden sorban ott a `request_id`: a kérésben kapott `X-Request-ID` (ha biztonságos formájú, legfeljebb 64 karakter), különben egy generált azonosító, amely a válaszfejlécben és a hibatörzsben is visszamegy. Kérésenként: `retrieval` (találatok száma, legjobb pontszám, idő), `generation` (modell, várakozás a modellhelyre, generálási idő, prompt- és válaszhossz tokenben, hivatkozott részletek száma) vagy `no_relevant_context`, végül `request` (metódus, útvonal, státusz, idő). A szolgáltatói újrapróbálások az OpenAI SDK `Retrying request …` soraiként látszanak; a konténer 10 másodpercenkénti `/health`-ellenőrzése csak `LOG_LEVEL=DEBUG` mellett kerül a naplóba. **Soha nem naplózzuk** az API-kulcsot, a kérdés és a válasz szövegét (csak a hosszukat), mert egy munkatárs kérdésében személyes adat is lehet. Példa:
 
 ```json
-{"ts": "2026-11-11T14:40:41.210+00:00", "level": "INFO", "logger": "policydesk.graph", "event": "generation", "request_id": "54b1ee17…", "model": "qwen3:4b-instruct", "ms": 24375, "prompt_tokens": 434, "completion_tokens": 97, "cited": 2, "answer_chars": 230}
+{"ts": "2026-11-11T14:40:41.210+00:00", "level": "INFO", "logger": "policydesk.graph", "event": "generation", "request_id": "54b1ee17…", "model": "qwen3:4b-instruct", "queue_ms": 0, "ms": 24375, "prompt_tokens": 434, "completion_tokens": 97, "cited": 2, "answer_chars": 230}
 ```
 
 ## 7. Konkurens felhasználók és skálázás
@@ -462,8 +477,9 @@ A címkék: **[megvalósítva]** a kódban van és tesztelt; **[következő lép
 **Erőforráskorlátok**
 
 - [megvalósítva] Kérésenkénti határidő (`REQUEST_TIMEOUT_SECONDS`) a teljes folyamatra (beágyazás, várakozás, generálás); a legrosszabb válaszidő maga a határidő.
-- [megvalósítva] Újrapróbálás csak átmeneti hibákra (kapcsolódási hiba, 408, 409, 429, 5xx), exponenciális visszalépéssel és jitterrel, a `Retry-After` fejléc figyelembevételével, és csak amíg a határidőből van idő. Lokálisan nincs újrapróbálás, mert egy túlfutott CPU-generálás újra is túlfutna, és dupla terhelést okozna.
+- [megvalósítva] Újrapróbálás csak átmeneti hibákra (kapcsolódási hiba, időtúllépés, 408, 409, 429, 5xx), exponenciális visszalépéssel és jitterrel, a `Retry-After` fejléc figyelembevételével. Minden próbálkozás a határidő egyenlő részét kapja (felhőben 30 s / 3 = 10 s), így egy beragadt hívás helyett jut idő újrapróbálásra; a határidő lejártakor a folyamatban lévő próbálkozás is megszakad. A kimerült kvóta (`insufficient_quota`) nem átmeneti hiba, ezért `model_error` lesz, `retryable: false`. Lokálisan nincs újrapróbálás, mert egy túlfutott CPU-generálás újra is túlfutna, és dupla terhelést okozna.
 - [megvalósítva] Folyamatonkénti konkurenciakorlát a chat-hívásokra (`MAX_CONCURRENT_MODEL_CALLS`); aki `QUEUE_TIMEOUT_SECONDS` alatt nem kap helyet, gyors `503 overloaded` választ kap `Retry-After`-rel, ahelyett hogy mindenki a határidőig várna.
+- [megvalósítva] Ha a kliens bontja a kapcsolatot, a kérés feldolgozása leáll, és a modellhely felszabadul (fél másodpercenkénti ellenőrzés). Enélkül egy feladott kérés a határidő végéig foglalná az egyetlen lokális modellhelyet, és addig mindenki más 503-at kapna.
 - [következő lépés] Globális, példányokon átívelő korlát a szolgáltató RPM/TPM-kvótájához igazítva (Redis token bucket vagy API-gateway kvóta), circuit breaker, és tartalék modell egy második szolgáltatónál. Kérésméret-korlát a reverse proxyban.
 
 **Több alkalmazáspéldány**
@@ -489,10 +505,11 @@ Külön terheléses tesztet nem futtattam; a párhuzamossági teszt és a túlte
 3. **Elutasítás `answered`-ként:** ha a modell a kapott részletek alapján nem tud válaszolni, a kimenetel `answered` marad, minden forrás `cited: false`. Szándékos: egy kis modell néha helyes válasznál is elhagyja a hivatkozást, és ezt nem akartam elutasításnak minősíteni.
 4. **Prompt injection:** a részletek elválasztva és „hivatkozási anyag, nem utasítás” jelöléssel kerülnek a promptba, és a korpusz kurált. Ez nem garancia; a modellnek viszont nincsenek eszközei, így a legrosszabb eset egy rossz válasz, nem egy művelet.
 5. **Nincs autentikáció**, és a `/health` kiírja a modellneveket. Prototípusnál elfogadható, élesben gateway vagy reverse proxy mögé kell tenni.
-6. **Az index példányonként, a memóriában él**, és induláskor épül. Kis, ritkán változó korpuszhoz jó; nagyhoz vagy gyakran változóhoz nem (7. fejezet).
+6. **Az index példányonként, a memóriában él**; induláskor épül fel, vagy változatlan dokumentumoknál a kötetből töltődik be. Kis, ritkán változó korpuszhoz jó; nagyhoz vagy gyakran változóhoz nem (7. fejezet).
 7. **Nincs kérésméret-korlát** az alkalmazásban: a kérdés hossza validált, de a törzs méretét a reverse proxynak kell korlátoznia.
-8. **A 429 mindig `model_rate_limited`**, akkor is, ha az OpenAI a kimerült kvóta miatt adja (`insufficient_quota`); ilyenkor az újrapróbálás nem segít.
+8. **Hosszú `Retry-After`:** ha a szolgáltató hosszabb várakozást kér, mint ami a határidőből maradt, az SDK várakozását a határidő szakítja meg, és a kliens `504 model_timeout`-ot kap (`retryable: true`), nem `503 model_rate_limited`-et `Retry-After`-rel.
 9. **A 4B-s lokális modell** magyar fogalmazása helyenként nehézkes, és több feltételt kombináló kérdésekben gyengébb.
+10. **Reverse proxy időkorlátja:** a lokális határidő 120 s, egy nginx alapból 60 s után bontja a kapcsolatot. Proxy mögött a proxy olvasási időkorlátját a határidő fölé kell állítani, vagy a határidőt alá; a kapcsolatbontás legalább a modellhelyet felszabadítja (7. fejezet).
 
 **Következő lépések, prioritás szerint**
 
