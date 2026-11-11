@@ -17,11 +17,14 @@ from policydesk.store import VectorIndex
 
 logger = logging.getLogger("policydesk.cli")
 
+STARTUP_TIMEOUT_SECONDS = 300
+
 
 async def prepare(settings: Settings, *, check_models: bool) -> VectorIndex:
     """Build the index if needed and, for `serve`, prove both models answer before any traffic is accepted.
-    In local mode the check also loads the models into memory, so the first question doesn't pay for it."""
-    client = make_client(settings)
+    In local mode the check also loads the models into memory, so the first question doesn't pay for it.
+    Startup gets its own generous timeout: a cold model load is not a user request."""
+    client = make_client(settings.model_copy(update={"request_timeout_seconds": STARTUP_TIMEOUT_SECONDS}))
     try:
         embedder = OpenAICompatibleEmbedder(client, settings.embedding_model)
         try:
