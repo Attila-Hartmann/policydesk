@@ -77,12 +77,12 @@ flowchart LR
         serve["cli.py serve<br/>1. indexelés, ha kell<br/>2. modellellenőrzés<br/>3. uvicorn"]
         api["api.py<br/>útvonalak, hibakezelők,<br/>kérésazonosító"]
         svc["service.py<br/>határidő, válasz összeállítása"]
-        graph["graph.py<br/>LangGraph: retrieve → generate | no_context"]
+        flow["graph.py<br/>LangGraph: retrieve → generate | no_context"]
         prov["providers.py<br/>OpenAI-kompatibilis chat + embedding<br/>az egyetlen szolgáltatófüggő modul"]
         store["store.py<br/>vektorindex: mentés, betöltés, keresés"]
-        serve --> api --> svc --> graph
-        graph --> prov
-        graph --> store
+        serve --> api --> svc --> flow
+        flow --> prov
+        flow --> store
     end
 
     docs[("data/policies/*.md")] --> serve
