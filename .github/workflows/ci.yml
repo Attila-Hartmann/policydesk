@@ -1,0 +1,37 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    # No secrets and no model endpoint: the fast suite uses fake models.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.6"
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest --cov
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t policydesk .
+      - name: Compose file is valid in both modes
+        run: |
+          cp .env.example .env && docker compose config --quiet && docker compose config --services
+          cp .env.openai.example .env && docker compose config --quiet && docker compose config --services
+      - name: Image starts and fails fast with a clear message when no model is reachable
+        run: |
+          set +e
+          out=$(docker run --rm -e BASE_URL=http://127.0.0.1:9/v1 policydesk 2>&1); code=$?
+          echo "$out" | tail -3
+          test "$code" -eq 1 && echo "$out" | grep -q startup_failed
