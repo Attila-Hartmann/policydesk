@@ -50,6 +50,7 @@ def test_english_question_is_answered_from_the_right_section(api: httpx.Client) 
     assert "45" in body["answer"]
     assert body["sources"][0]["chunk_id"] == "travel-and-expenses:05"
     assert body["sources"][0]["cited"] is True
+    assert "Vienna: EUR 45" in body["sources"][0]["text"]
 
 
 def test_hungarian_question_finds_the_english_policy(api: httpx.Client) -> None:

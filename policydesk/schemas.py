@@ -26,6 +26,10 @@ class Source(BaseModel):
     document: str = Field(examples=["travel-and-expenses.md"])
     title: str = Field(examples=["Travel and Expenses Policy"])
     section: str = Field(examples=["Daily meal allowance"])
+    text: str = Field(
+        description="The excerpt exactly as the model received it, starting with its title › section line.",
+        examples=["Travel and Expenses Policy › Daily meal allowance\n\n... - Vienna: EUR 45 ..."],
+    )
     score: float = Field(description="Cosine similarity between question and excerpt.", examples=[0.71])
     cited: bool = Field(description="True if the answer cites this excerpt as [n].")
 

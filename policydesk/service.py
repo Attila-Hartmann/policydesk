@@ -35,6 +35,7 @@ class AskService:
                     document=hit.chunk.document,
                     title=hit.chunk.title,
                     section=hit.chunk.section,
+                    text=hit.chunk.text,
                     score=hit.score,
                     cited=n in cited,
                 )

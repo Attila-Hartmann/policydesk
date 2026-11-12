@@ -24,7 +24,7 @@ Kérdés-válasz backend belső szabályzatokhoz: egy munkatárs kérdésére a 
 
 **Képességek**
 
-- `POST /ask`: kérdés → válasz a forrásrészletekkel (dokumentum, szakasz, hasonlósági pontszám, hivatkozott-e rá a válasz).
+- `POST /ask`: kérdés → válasz a forrásrészletekkel (dokumentum, szakasz, a részlet szövege, hasonlósági pontszám, hivatkozott-e rá a válasz).
 - Ha nincs elég releváns részlet, a válasz `no_relevant_context`, és a nyelvi modell **nem** kap hívást.
 - Egységes hibaformátum minden hibára (érvénytelen kérés, modell-időtúllépés, szolgáltatói hiba, túlterhelés), kérésazonosítóval.
 - `GET /health` állapotellenőrzés, OpenAPI-dokumentáció a `/docs` címen.
@@ -361,18 +361,20 @@ A lenti válaszok lokális módban, a fenti kérésekkel készültek (a `request
   "answer": "The daily meal allowance in Vienna is EUR 45 [1].",
   "sources": [
     {"chunk_id": "travel-and-expenses:05", "document": "travel-and-expenses.md", "title": "Travel and Expenses Policy",
-     "section": "Daily meal allowance", "score": 0.7379, "cited": true},
+     "section": "Daily meal allowance",
+     "text": "Travel and Expenses Policy › Daily meal allowance\n\nInstead of reimbursing individual meals, the firm pays a fixed daily meal allowance for each full day spent on a business trip abroad:\n\n- Vienna: EUR 45\n…",
+     "score": 0.7379, "cited": true},
     {"chunk_id": "benefits:01", "document": "benefits.md", "title": "Benefits Overview",
-     "section": "Cafeteria allowance", "score": 0.5972, "cited": false},
+     "section": "Cafeteria allowance", "text": "…", "score": 0.5972, "cited": false},
     {"chunk_id": "travel-and-expenses:04", "document": "travel-and-expenses.md", "title": "Travel and Expenses Policy",
-     "section": "Accommodation", "score": 0.5787, "cited": false}
+     "section": "Accommodation", "text": "…", "score": 0.5787, "cited": false}
   ],
   "model": "qwen3:4b-instruct",
   "request_id": "be77650f…"
 }
 ```
 
-A `sources` a modellnek átadott összes részlet, a legjobb egyezéssel kezdve; a `cited` azt mutatja, hogy a válasz `[n]` formában hivatkozott-e rá.
+A `sources` a modellnek átadott összes részlet, a legjobb egyezéssel kezdve. A `text` a részlet pontosan úgy, ahogy a modell megkapta (a cím › szakasz sorral együtt; itt rövidítve), így a válasz a dokumentumok megnyitása nélkül is ellenőrizhető. A `cited` azt mutatja, hogy a válasz `[n]` formában hivatkozott-e rá.
 
 **Magyar kérdés** (`ask-hu.json`: *Hány nap szabadság jár egy évben, és meddig vihetem át a ki nem vett napokat?*), rövidítve. A válasz a lokális modell szó szerinti szövege: tartalmilag helyes, a fogalmazása nehézkes (5.2, 8.).
 

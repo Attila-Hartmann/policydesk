@@ -29,7 +29,7 @@ A hivatkozott tesztek a [`tests/`](../tests/) mappában vannak; a „README” h
 | R9 | „HTTP API-val elérhető backendalkalmazást” | FastAPI ([`api.py`](../policydesk/api.py)); API-tesztek; élő próba mindkét módban | ✅ |
 | R10 | „Frontendet nem szükséges készíteni” | Nincs frontend, a nem-célok között szerepel (README 1) | ✅ |
 | R11 | „kérdés-válasz végpont … releváns dokumentumrészleteket keres, majd … választ generál” | `POST /ask`; `test_ask_returns_answer_with_sources`; integrációs tesztek lokális és felhős módban | ✅ |
-| R12 | „azonosítható, mely dokumentumokat vagy részleteket használta fel” | `sources` (dokumentum, szakasz, pontszám, `cited`); `test_ask_returns_answer_with_sources`, `test_cited_numbers` | ✅ |
+| R12 | „azonosítható, mely dokumentumokat vagy részleteket használta fel” | `sources` (dokumentum, szakasz, a részlet szövege, pontszám, `cited`); `test_ask_returns_answer_with_sources`, `test_cited_numbers` | ✅ |
 | R13 | „betöltése és indexelése külön paranccsal vagy induláskori folyamattal” | Induláskor (`serve`, az index kötetben marad) és külön paranccsal (`ingest`); `test_ingest_skips_when_fingerprint_unchanged_and_rebuilds_when_it_changes`, `test_ingest_builds_the_index` | ✅ |
 | R14 | „alapvető bemenetellenőrzés” | Pydantic-séma: 3–500 karakter, extra mező tiltva; `test_invalid_input` | ✅ |
 | R15 | „következetes hibaválasz” | Egy hibaformátum minden hibára (README 6.3); `assert_error` minden hibatesztben | ✅ |

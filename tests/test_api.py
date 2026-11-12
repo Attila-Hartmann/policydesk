@@ -41,6 +41,7 @@ def test_ask_returns_answer_with_sources(client: TestClient, chat: FakeChat) -> 
     assert top["chunk_id"] == "travel:01"
     assert (top["document"], top["title"], top["section"]) == ("travel.md", "Travel Policy", "Meal allowance")
     assert top["cited"] is True
+    assert top["text"] in chat.prompts[0]  # the source shows exactly what the model was given
     assert all(s["cited"] is False for s in body["sources"][1:])
     assert [s["score"] for s in body["sources"]] == sorted((s["score"] for s in body["sources"]), reverse=True)
     assert len(chat.prompts) == 1
