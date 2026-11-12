@@ -46,7 +46,7 @@ cp .env.example .env          # PowerShell: Copy-Item .env.example .env
 docker compose up --build
 ```
 
-Az első indítás **kb. 12 GB-ot tölt le** (Ollama-image 8,5 GB, a két modell 3,7 GB; az időtartam a kapcsolaton múlik), ezután indexel (`index_batch_embedded` sorok a naplóban) és ellenőrzi a modelleket. Akkor kész, amikor a naplóban megjelenik a `Uvicorn running on http://0.0.0.0:8000` sor: az első alkalommal a letöltés után, letöltött modellekkel kb. másfél perc, később kb. 10 s. Háttérben futtatva (`docker compose up -d --build`) a `docker compose ps` mutatja, mikor lesz az `api` `healthy`. Egy másik terminálban:
+Az első indítás **kb. 7 GB-ot tölt le** (Ollama-image 3,4 GB tömörítve, a két modell 3,7 GB; az időtartam a kapcsolaton múlik; kicsomagolva kb. 13 GB a lemezen), ezután indexel (`index_batch_embedded` sorok a naplóban) és ellenőrzi a modelleket. Akkor kész, amikor a naplóban megjelenik a `Uvicorn running on http://0.0.0.0:8000` sor: az első alkalommal a letöltés után, letöltött modellekkel kb. másfél perc, később kb. 10 s. Háttérben futtatva (`docker compose up -d --build`) a `docker compose ps` mutatja, mikor lesz az `api` `healthy`. Egy másik terminálban:
 
 ```bash
 curl -s -H "Content-Type: application/json" --data-binary "@examples/ask-en.json" http://localhost:8000/ask
@@ -64,6 +64,16 @@ docker compose up --build
 ```
 
 Ugyanaz az image és ugyanaz a kód fut, csak a `.env` más. Felhős módban az Ollama-szolgáltatások el sem indulnak.
+
+### Melyik utat válaszd?
+
+| Helyzet | Út | Első indítás | Válaszidő (mért) |
+|---|---|---|---|
+| Van OpenAI API-kulcsod | Felhős mód (fent) | Nincs modelletöltés | 1,3–2,7 s |
+| Már fut Ollama a gépeden (például Macen, ahol a Docker nem éri el a GPU-t, a natív Ollama viszont igen) | Lokális mód a gép Ollamájával, lásd lent | 3,7 GB modell, ha még nincs meg; az Ollama-image nem kell | A gép erejétől függ; CPU-n ugyanannyi, mint lent |
+| Csak Docker van | Lokális mód konténeres Ollamával (fent) | kb. 7 GB letöltés | CPU-n 8–70 s, medián kb. 33 s |
+
+A gépen futó Ollamával: `ollama pull qwen3:4b-instruct` és `ollama pull bge-m3`, majd a `cp .env.example .env` után a `.env`-ben `COMPOSE_PROFILES=` (üres) és `BASE_URL=http://host.docker.internal:11434/v1`, végül `docker compose up --build`. Így csak az `api` konténer indul (ellenőrizve: 40 s alatt egészséges, és ugyanazokat a válaszokat adja).
 
 ## 3. Architektúra
 
@@ -300,17 +310,17 @@ A küszöb `0,39`. A legmagasabb pontszámú témán kívüli kérdés itt a „
 
 | | Mért érték |
 |---|---|
-| Lemez | Ollama-image 8,5 GB, modellek 3,7 GB, alkalmazás-image 0,4 GB |
+| Letöltés és lemez | Ollama-image 3,4 GB letöltés (8,5 GB kicsomagolva), modellek 3,7 GB, alkalmazás-image 0,4 GB |
 | Memória | Ollama-konténer kb. 5,1 GiB mindkét modellel betöltve (korábbi futásnál 7,5 GiB-ot is láttam); API-konténer kb. 100 MiB |
 | Első indulás | 465 s a `healthy` állapotig, ebből a 3,7 GB modell letöltése kb. 6 perc (az Ollama-image már megvolt; a letöltési idő a kapcsolaton múlik) |
 | Indulás letöltött modellekkel, új indexszel | 75–90 s: indexelés (57 darab) 40–70 s, modellellenőrzés 14–33 s |
 | Újraindítás meglévő indexszel | kb. 11 s (az index a kötetből töltődik be) |
-| Válaszidő | 12–50 s kérdésenként (prompt-feldolgozás kb. 35 token/s, generálás kb. 4 token/s) |
+| Válaszidő | 8–70 s kérdésenként, medián kb. 33 s (16 kérdés: 8 angol és magyar mintakérdés két futtatásban; prompt-feldolgozás kb. 35 token/s, generálás kb. 4 token/s). A magyar válaszok hosszabbak, ezért lassabbak. |
 | Témán kívüli kérdés | 0,5 s alatt (nincs generálás) |
 
 **Ajánlott minimum:** 4 CPU-mag, 8 GB szabad memória a Dockernek, 13 GB szabad lemez. GPU nem kell; NVIDIA GPU-val vagy Apple Silicon gépen natív Ollamával sokkal gyorsabb. **macOS-en** a Docker nem éri el a GPU-t, ezért ott a natív Ollama ajánlott (`BASE_URL=http://host.docker.internal:11434/v1`, `COMPOSE_PROFILES=`).
 
-**Korlátok:** a lokális mód lassabb (CPU-n tíz-ötven másodperc egy válasz), és egyszerre egy kérdést dolgoz fel; a többi kérés legfeljebb 5 s várakozás után `503 overloaded` választ kap. A 4B-s modell válaszai tömörek és a tesztkérdésekre helyesek voltak, de a magyar fogalmazása néha nehézkes, és bonyolult, több feltételt kombináló kérdéseknél gyengébb a felhős modellnél.
+**Korlátok:** a lokális mód lassabb (CPU-n fél perc körül egy válasz), és egyszerre egy kérdést dolgoz fel; a többi kérés legfeljebb 5 s várakozás után `503 overloaded` választ kap. A 4B-s modell válaszai tömörek és a tesztkérdésekre helyesek voltak, de a magyar fogalmazása néha nehézkes, és bonyolult, több feltételt kombináló kérdéseknél gyengébb a felhős modellnél.
 
 **Relevanciaküszöb kalibrálása** (`bge-m3`, a legjobb találat pontszáma; mindegyik témához tartozó kérdésnél a helyes szakasz lett az első):
 
@@ -500,7 +510,7 @@ Külön terheléses tesztet nem futtattam; a párhuzamossági teszt és a túlte
 
 **Korlátok és egyszerűsítések**
 
-1. **Lokális válaszidő:** CPU-n 12–50 s egy új kérdésre, és egyszerre egy kérdés. A kiírás megengedi, hogy a lokális mód lassabb legyen; GPU-val vagy natív Ollamával Apple Siliconon gyorsabb.
+1. **Lokális válaszidő:** CPU-n 8–70 s egy kérdésre (medián kb. 33 s), és egyszerre egy kérdés. A legnagyobb részt a generálás viszi (kb. 4 token/s): a `TOP_K` 4-ről 3-ra csökkentése mérhetően nem gyorsított, mert a küszöb miatt a legtöbb kérdés amúgy is legfeljebb 3 részletet kap. A kiírás megengedi, hogy a lokális mód lassabb legyen; GPU-val vagy natív Ollamával Apple Siliconon gyorsabb.
 2. **A relevanciaküszöb heurisztika:** a lokális modellnél a rés kicsi (0,529 és 0,586 között), így határeset-kérdések rossz oldalra eshetnek. Ha egy releváns szót tartalmazó, de témán kívüli kérdés átjut a küszöbön, a prompt utasítja a modellt, hogy mondja meg, ha a részletek nem fedik le a kérdést.
 3. **Elutasítás `answered`-ként:** ha a modell a kapott részletek alapján nem tud válaszolni, a kimenetel `answered` marad, minden forrás `cited: false`. Szándékos: egy kis modell néha helyes válasznál is elhagyja a hivatkozást, és ezt nem akartam elutasításnak minősíteni.
 4. **Prompt injection:** a részletek elválasztva és „hivatkozási anyag, nem utasítás” jelöléssel kerülnek a promptba, és a korpusz kurált. Ez nem garancia; a modellnek viszont nincsenek eszközei, így a legrosszabb eset egy rossz válasz, nem egy művelet.
@@ -508,7 +518,7 @@ Külön terheléses tesztet nem futtattam; a párhuzamossági teszt és a túlte
 6. **Az index példányonként, a memóriában él**; induláskor épül fel, vagy változatlan dokumentumoknál a kötetből töltődik be. Kis, ritkán változó korpuszhoz jó; nagyhoz vagy gyakran változóhoz nem (7. fejezet).
 7. **Nincs kérésméret-korlát** az alkalmazásban: a kérdés hossza validált, de a törzs méretét a reverse proxynak kell korlátoznia.
 8. **Hosszú `Retry-After`:** ha a szolgáltató hosszabb várakozást kér, mint ami a határidőből maradt, az SDK várakozását a határidő szakítja meg, és a kliens `504 model_timeout`-ot kap (`retryable: true`), nem `503 model_rate_limited`-et `Retry-After`-rel.
-9. **A 4B-s lokális modell** magyar fogalmazása helyenként nehézkes, és több feltételt kombináló kérdésekben gyengébb.
+9. **A 4B-s lokális modell** magyar fogalmazása helyenként nehézkes, és több feltételt kombináló kérdésekben gyengébb. Példa: a „Can I fly business class to New York?” kérdésre azt válaszolja, hogy a szabályzat ezt nem szabályozza, pedig a szabály szerint 6 óránál hosszabb repülésnél partneri jóváhagyással lehet; a kis modell nem következteti ki, hogy a New York-i út hosszabb 6 óránál. A felhős modell ezt helyesen kezeli.
 10. **Reverse proxy időkorlátja:** a lokális határidő 120 s, egy nginx alapból 60 s után bontja a kapcsolatot. Proxy mögött a proxy olvasási időkorlátját a határidő fölé kell állítani, vagy a határidőt alá; a kapcsolatbontás legalább a modellhelyet felszabadítja (7. fejezet).
 
 **Következő lépések, prioritás szerint**
